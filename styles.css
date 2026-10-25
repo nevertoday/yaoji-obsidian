@@ -350,8 +350,26 @@
   color: color-mix(in srgb, var(--yaoji-ink) 85%, var(--yaoji-muted));
 }
 
+.yaoji-issue {
+  max-width: 100%;
+  align-self: flex-start;
+}
+
+/* 项目名太长就截断，编号紧跟在名字后面，不换行 */
+.yaoji-issue-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yaoji-today a.yaoji-issue-num {
+  flex: none;
+}
+
 .yaoji-issue::before {
   content: '';
+  flex: none;
   width: 7px;
   height: 7px;
   background: var(--yaoji-issue);
