@@ -410,3 +410,10 @@
   margin: 0 0 var(--size-4-4);
   font-size: var(--font-ui-medium);
 }
+
+.yaoji-pair-warn {
+  margin: calc(-1 * var(--size-4-2)) 0 var(--size-4-4);
+  font-size: var(--font-ui-small);
+  color: var(--text-warning);
+  overflow-wrap: anywhere;
+}

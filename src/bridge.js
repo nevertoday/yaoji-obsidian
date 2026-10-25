@@ -12,15 +12,24 @@ import { t } from './i18n.js';
 const { Modal, Platform, TFile, TFolder, normalizePath } = obsidian;
 
 export const BRIDGE_PORT = 27125;
+// 应用商店里的今日待办。别的扩展 ID（自己装的开发版）也能连，但「允许」那一句会写明不是商店里的
+export const STORE_EXTENSION_ID = 'ebnjmpnagendlekalpopgeaiimdfpffi';
 const PAIR_TIMEOUT_MS = 120 * 1000;
+// 点了「不允许」以后这么久不再弹，免得被一直弹窗
+const PAIR_COOLDOWN_MS = 30 * 1000;
 const MAX_BODY_BYTES = 50 * 1024 * 1024;
+const MAX_TEXT_BYTES = 10 * 1024 * 1024;
 const TEXT_FILE = /\.(md|markdown|txt|csv|json|canvas|base)$/i;
+// 能写的只有笔记和附件（扩展只写这些）；.js、.html 这些一概不写
+const WRITABLE_FILE = /\.(md|markdown|txt|png|jpe?g|gif|webp|svg|avif|bmp|pdf|mp3|m4a|mp4)$/i;
 const MIME = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
   avif: 'image/avif', bmp: 'image/bmp', pdf: 'application/pdf', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'video/mp4'
 };
 
-// 路径里不能有 ..，也不碰库的设置文件夹（一般叫 .obsidian，设置、插件、密钥都在那里）和回收站
+// 路径里不能有 ..，任何一段以点开头的都不碰：库的设置文件夹（一般叫 .obsidian，设置、插件、密钥都在那里；
+// 磁盘不分大小写时 .OBSIDIAN 也是它）、回收站、.git（钩子能跑程序）都在里面。
+// 冒号（盘符、NTFS 数据流）、控制字符、Windows 短文件名（OBSIDI~1 也可能指向 .obsidian）也不碰
 export function cleanVaultPath(raw, configDir) {
   let decoded;
   try {
@@ -29,14 +38,32 @@ export function cleanVaultPath(raw, configDir) {
     return null;
   }
   const parts = decoded.replace(/\\/g, '/').split('/').filter(Boolean);
-  if (parts.some((part) => part === '..' || part === '.')) return null;
-  const config = String(configDir || '').replace(/^\/+|\/+$/g, '');
-  if (!config || parts[0] === config || parts[0] === '.trash') return null;
+  if (parts.some((part) => part.startsWith('.') || /[:\u0000-\u001f\u007f]/.test(part) || (part.length <= 12 && /~\d/.test(part)))) return null;
+  const config = String(configDir || '').replace(/^\/+|\/+$/g, '').toLowerCase();
+  if (!config || (parts[0] || '').toLowerCase() === config) return null;
   return parts.join('/');
 }
 
 export function originAllowed(origin) {
   return !origin || /^chrome-extension:\/\/[a-p]{32}$/.test(origin);
+}
+
+export function writableFile(path) {
+  return WRITABLE_FILE.test(String(path || ''));
+}
+
+// 比密钥时每一位都比完，不因为前几位就对不上而提早返回
+export function sameToken(a, b) {
+  const x = String(a || '');
+  const y = String(b || '');
+  if (!x || x.length !== y.length) return false;
+  let diff = 0;
+  for (let i = 0; i < x.length; i += 1) diff |= x.charCodeAt(i) ^ y.charCodeAt(i);
+  return diff === 0;
+}
+
+export function extensionId(origin) {
+  return String(origin || '').replace(/^chrome-extension:\/\//, '');
 }
 
 export function hostAllowed(host) {
@@ -48,6 +75,7 @@ export class Bridge {
     this.plugin = plugin;
     this.server = null;
     this.pairing = null;
+    this.deniedAt = 0;
   }
 
   get app() { return this.plugin.app; }
@@ -85,9 +113,12 @@ export class Bridge {
     return Array.isArray(this.plugin.settings.browsers) ? this.plugin.settings.browsers : [];
   }
 
+  // 密钥要对，而且请求带着扩展来源时，得是当初配对的那个扩展（别的扩展拿到密钥也用不了）
   authorized(req) {
     const match = String(req.headers.authorization || '').match(/^Bearer\s+(\S+)$/i);
-    return !!match && this.tokens().some((entry) => entry.token === match[1]);
+    if (!match) return false;
+    const origin = String(req.headers.origin || '');
+    return this.tokens().some((entry) => sameToken(entry.token, match[1]) && (!origin || !entry.origin || entry.origin === origin));
   }
 
   send(res, status, body, headers = {}) {
@@ -192,6 +223,10 @@ export class Bridge {
         return;
       }
       if (req.method === 'PUT' && vaultPath) {
+        if (!writableFile(vaultPath)) {
+          this.send(res, 403, { error: 'forbidden_type' });
+          return;
+        }
         await this.write(req, res, vaultPath);
         return;
       }
@@ -240,8 +275,11 @@ export class Bridge {
       return;
     }
     await this.plugin.ensureFolder(target);
-    const contentType = String(req.headers['content-type'] || '');
-    const text = TEXT_FILE.test(target) || contentType.startsWith('text/');
+    const text = TEXT_FILE.test(target);
+    if (text && body.length > MAX_TEXT_BYTES) {
+      this.send(res, 413, { error: 'too_large' });
+      return;
+    }
     if (text) {
       const content = body.toString('utf8');
       if (existing) await this.app.vault.modify(existing, content);
@@ -264,13 +302,17 @@ export class Bridge {
       this.send(res, 409, { error: 'pairing_busy' });
       return;
     }
+    if (Date.now() - this.deniedAt < PAIR_COOLDOWN_MS) {
+      this.send(res, 403, { error: 'pair_denied' });
+      return;
+    }
     let name = '';
     try {
       name = String(JSON.parse((await this.readBody(req)).toString('utf8') || '{}').name || '').slice(0, 60);
     } catch { /* 名字只是给人看的 */ }
 
     const allowed = await new Promise((resolve) => {
-      const modal = new PairModal(this.app, this.app.vault.getName(), resolve);
+      const modal = new PairModal(this.app, this.app.vault.getName(), extensionId(origin), resolve);
       const timer = window.setTimeout(() => modal.close(), PAIR_TIMEOUT_MS);
       this.pairing = { modal };
       modal.onDone = () => window.clearTimeout(timer);
@@ -278,6 +320,7 @@ export class Bridge {
     });
     this.pairing = null;
     if (!allowed) {
+      this.deniedAt = Date.now();
       this.send(res, 403, { error: 'pair_denied' });
       return;
     }
@@ -297,9 +340,10 @@ function randomToken() {
 
 // 「浏览器里的今日待办想连接这个库」：一句话，允许 / 不允许
 class PairModal extends Modal {
-  constructor(app, vaultName, resolve) {
+  constructor(app, vaultName, id, resolve) {
     super(app);
     this.vaultName = vaultName;
+    this.id = id;
     this.resolve = resolve;
     this.answered = false;
     this.onDone = null;
@@ -315,6 +359,10 @@ class PairModal extends Modal {
   onOpen() {
     this.modalEl.addClass('yaoji-pair-modal');
     this.contentEl.createEl('p', { cls: 'yaoji-pair-text', text: t('浏览器里的今日待办想连接「{vault}」', { vault: this.vaultName }) });
+    // 不是商店里的那个扩展：写出它的 ID，不认识就别允许（连上以后它能读写这个库里的笔记）
+    if (this.id !== STORE_EXTENSION_ID) {
+      this.contentEl.createEl('p', { cls: 'yaoji-pair-warn', text: t('不是应用商店里的今日待办（扩展 ID {id}）。不认识就点「不允许」。', { id: this.id }) });
+    }
     const row = this.contentEl.createDiv({ cls: 'modal-button-container' });
     const deny = row.createEl('button', { text: t('不允许') });
     deny.addEventListener('click', () => { this.answer(false); this.close(); });
