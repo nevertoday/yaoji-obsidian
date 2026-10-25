@@ -64,6 +64,10 @@ It is the same account and the same membership as the browser extension.
 
 Privacy policy: https://vip.xiaoxiaodong.ai/plugins/yaoji/privacy
 
+## License
+
+Source available, all rights reserved: free to install and use for personal use, not to redistribute. See [LICENSE](LICENSE).
+
 ## Credits
 
 - [lunar-javascript](https://github.com/6tail/lunar-javascript) (MIT, `licenses/lunar-javascript.LICENSE`) for the Chinese calendar line in the Chinese UI.
@@ -125,3 +129,7 @@ Privacy policy: https://vip.xiaoxiaodong.ai/plugins/yaoji/privacy
 - 不统计使用情况，没有广告。
 
 隐私说明：https://vip.xiaoxiaodong.ai/plugins/yaoji/privacy
+
+## 许可
+
+源码公开、保留所有权利：可以免费安装、个人使用，不能再分发。见 [LICENSE](LICENSE)。

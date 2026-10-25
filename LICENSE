@@ -1,16 +1,35 @@
 小小东 · 今日待办（XXD Today’s To-dos）Obsidian 插件
 Copyright © 2026 小小东. All rights reserved.
 
-本软件（包括但不限于源代码、压缩后的代码、界面设计、图标、文案与文档）的全部权利归权利人所有。
+本软件（包括但不限于源代码、打包后的代码、界面设计、图标、文案与文档）的全部权利归权利人所有。
+源代码公开是为了让用户和 Obsidian 审核能看到插件做了什么，不代表授予任何开源许可。
+
+用户在遵守本声明的前提下，可以为个人用途安装和使用从官方渠道（Obsidian 社区插件目录、
+本仓库的 Releases、vip.xiaoxiaodong.ai）获得的本软件，也可以阅读源代码。
+
 未经权利人书面许可，任何人不得：
-1. 复制、修改、翻译、改编本软件的全部或部分；
-2. 对本软件进行反向工程、反编译、反汇编，或试图从中提取源代码与设计（法律明确允许的除外）；
-3. 以任何形式分发、出租、出售、再许可本软件，或将其全部或部分上架到任何插件市场或平台；
-4. 移除或修改本软件中的版权声明、版本标识与指纹信息。
+1. 复制、修改、翻译、改编本软件的全部或部分，用于个人使用以外的目的；
+2. 以任何形式分发、出租、出售、再许可本软件，或将其全部或部分上架到任何插件市场或平台；
+3. 移除或修改本软件中的版权声明。
 
-用户在遵守本声明及服务条款的前提下，可以为个人用途安装和使用从官方渠道（Obsidian 社区插件、
-vip.xiaoxiaodong.ai）获得的本软件。
+第三方代码按各自的许可证使用，见 licenses/ 目录。
 
-All rights reserved. No part of this software — source or minified code, interface, icons, text or
-documentation — may be copied, modified, reverse engineered, redistributed, sublicensed or published
-to any plugin store without prior written permission from the copyright holder.
+---
+
+Copyright © 2026 小小东 (Xiaoxiaodong). All rights reserved.
+
+The source code is published so that users and Obsidian reviewers can see what the plugin does.
+No open-source license is granted.
+
+You may install and use this software for personal use, as obtained from official channels
+(the Obsidian community plugin directory, this repository’s Releases, vip.xiaoxiaodong.ai),
+and you may read the source code.
+
+Without prior written permission from the copyright holder you may not:
+1. copy, modify, translate or adapt all or part of this software for any purpose other than
+   personal use;
+2. distribute, rent, sell or sublicense this software in any form, or publish all or part of it
+   to any plugin store or platform;
+3. remove or alter the copyright notices in this software.
+
+Third-party code is used under its own license; see the licenses/ folder.
