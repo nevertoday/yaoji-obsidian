@@ -140,5 +140,63 @@ export class YaojiSettingTab extends PluginSettingTab {
             await plugin.saveSettings();
           }));
     }
+
+    this.memberRows(containerEl);
+  }
+
+  // 会员：没登录一行「登录」；登录了写账号和会员到哪天、能退出；再一行 GitHub（连接 / 断开）
+  memberRows(containerEl) {
+    const plugin = this.plugin;
+    const member = plugin.member;
+    if (!member) return;
+    new Setting(containerEl).setName(t('会员')).setHeading();
+    if (!member.signedIn()) {
+      new Setting(containerEl)
+        .setName(t('小小东账号'))
+        .setDesc(t('登录后能把事情发到 GitHub，问题关了自动打勾'))
+        .addButton((button) => button.setButtonText(t('登录')).setCta().onClick(() => member.startLogin()));
+      return;
+    }
+    const info = member.member() || {};
+    new Setting(containerEl)
+      .setName(info.email || t('小小东账号'))
+      .setDesc(info.active && info.expiresAt ? t('会员到 {date}', { date: info.expiresAt.slice(0, 10) }) : t('免费'))
+      .addButton((button) => button.setButtonText(t('退出登录')).onClick(async () => {
+        await member.logout();
+        this.display();
+      }));
+
+    const github = plugin.github;
+    const row = new Setting(containerEl).setName('GitHub');
+    const state = github.cachedStatus();
+    if (!state) {
+      // 只问一次：问不到就说一句，不反复重画
+      if (this.githubAsked) {
+        row.setDesc(t('连不上小小东会员站，稍后再试'));
+        return;
+      }
+      this.githubAsked = true;
+      row.setDesc('…');
+      github.status().then(() => this.display(), () => this.display());
+      return;
+    }
+    if (state.connected) {
+      row.setDesc(`${state.login ? `@${state.login} · ` : ''}${t('{count} 个项目', { count: github.repoList().length })}`)
+        .addButton((button) => button.setButtonText(t('断开')).onClick(async () => {
+          await github.disconnect().catch(() => {});
+          this.display();
+        }));
+      return;
+    }
+    if (!info.active) row.setDesc(t('发到 GitHub 是会员功能'));
+    row.addButton((button) => button.setButtonText(t('连接 GitHub')).onClick(async () => {
+      button.setDisabled(true).setButtonText(t('去浏览器里授权…'));
+      try {
+        await github.connect();
+      } catch (error) {
+        plugin.notify(github.errorText(error), [], 6000);
+      }
+      this.display();
+    }));
   }
 }

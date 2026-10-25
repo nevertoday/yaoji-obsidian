@@ -14,6 +14,10 @@ class MarkdownParser {
     TODO_ID_PREFIX: '%%yaoji:todoid:'
   };
 
+  // 今天已经自动「带过来」了：写在今天日记事项标题下面的一行注释（阅读时看不见）。
+  // 浏览器扩展和 Obsidian 里的今日待办插件都开着、或者两台电脑都开着时，谁先写下它谁带，另一边看到就不再带（GitHub 问题 #19）
+  static BROUGHT_MARK = '%%yaoji:brought%%';
+
   // 任务行：- [ ] / * [ ] / + [ ]，允许空格或 Tab 缩进
   static TODO_LINE = /^([ \t]*)([-*+]) \[([ xX])\]\s*(.*)$/;
 
@@ -444,6 +448,21 @@ class MarkdownParser {
    */
   generateId() {
     return crypto.randomUUID();
+  }
+
+  hasBroughtMark(markdown) {
+    return String(markdown || '').includes(MarkdownParser.BROUGHT_MARK);
+  }
+
+  // 在事项标题下面写上「今天带过了」；没有这一节就先加上这一节
+  markBrought(markdown, sectionTitle) {
+    const text = String(markdown || '');
+    if (this.hasBroughtMark(text)) return text;
+    const section = this.extractSection(text, sectionTitle);
+    if (!section) return `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${sectionTitle}\n${MarkdownParser.BROUGHT_MARK}\n`;
+    const lines = text.split('\n');
+    lines.splice(section.startLine + 1, 0, MarkdownParser.BROUGHT_MARK);
+    return lines.join('\n');
   }
 
   /**

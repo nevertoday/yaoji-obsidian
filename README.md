@@ -39,9 +39,19 @@
 - 读写的只有库里的笔记和附件，碰不到 `.obsidian` 里的设置和插件。
 - 设置里能看到连着的浏览器，随时断开。
 
+## 会员功能（可选）
+
+设置 › 会员 里点「登录」，会在浏览器里打开小小东会员站登录，确认后跳回 Obsidian（`obsidian://yaoji-auth`）。登录后：
+
+- **发到 GitHub**：侧边栏里右键一件事 › 发到 GitHub，选项目（打字就能找），这件事变成那个项目的一个问题，问题地址接在这件事后面。
+- **问题关了自动打勾**：今天和最近 14 天的日记里发过的事，GitHub 上关成「完成」就自动勾上；关成「不打算做」「重复」的不替你打勾。
+- 连接 GitHub、会员到期这些都由小小东会员站判断，和浏览器扩展用的是同一个账号、同一份会员。
+
 ## 联网和隐私
 
-插件不连外网，只读写你库里的日记文件；上面那个本机接口只在你自己的电脑上。
+- 不登录：插件不连外网，只读写你库里的日记文件；给浏览器扩展的本机接口只在你自己的电脑上。
+- 登录后：只在用会员功能时连小小东会员站（`vip.xiaoxiaodong.ai`）：发到 GitHub 时把这件事的标题和文字发给会员站转给 GitHub；定时查发过的问题关没关。日记的其他内容不会发出去。
+- 需要账号；会员功能需要付费会员。隐私说明：https://vip.xiaoxiaodong.ai/plugins/yaoji/privacy
 
 ---
 
@@ -59,4 +69,6 @@ The file format is plain Markdown, identical to the “今日待办 / Today’s 
 
 **Browser extension:** on desktop the plugin opens a local-only endpoint (`127.0.0.1:27125`) for the companion browser extension. Click “Connect” in the extension and “Allow” in Obsidian; no Local REST API, API key or certificate needed. Only paired extensions are accepted, web pages are refused, and `.obsidian` is never readable or writable through it. Paired browsers are listed in settings and can be disconnected.
 
-**Network & privacy:** the plugin makes no internet requests; it only reads and writes notes in your vault, and the local endpoint is reachable from your own computer only.
+**Membership (optional):** sign in from Settings › Member (opens the Xiaoxiaodong member site in your browser, then returns to Obsidian via `obsidian://yaoji-auth`). Signed-in members can send a to-do to a GitHub repository from the sidebar's right-click menu, and to-dos whose issue closes as completed get ticked off automatically.
+
+**Network & privacy:** without signing in, the plugin makes no internet requests; it only reads and writes notes in your vault, and the local endpoint is reachable from your own computer only. When signed in, it talks to `vip.xiaoxiaodong.ai` only for member features: the title and text of a to-do you send to GitHub, and periodic checks of issues you sent. Requires an account; member features require a paid membership. Privacy policy: https://vip.xiaoxiaodong.ai/plugins/yaoji/privacy

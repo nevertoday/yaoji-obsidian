@@ -3,6 +3,7 @@
 import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
 import { addDays, appendTodo, dateKey, deleteTodo, editTodo, readTodos } from './today.js';
+import { shortIssueLinks } from './github.js';
 
 const { ItemView, MarkdownRenderer, Menu, setIcon } = obsidian;
 
@@ -142,7 +143,7 @@ export class TodayView extends ItemView {
     });
 
     const text = row.createDiv({ cls: 'yaoji-text' });
-    MarkdownRenderer.render(this.app, todo.text, text, sourcePath, this).then(() => {
+    MarkdownRenderer.render(this.app, shortIssueLinks(todo.text), text, sourcePath, this).then(() => {
       // 太长的折成两行，点一下展开
       window.requestAnimationFrame(() => {
         if (text.scrollHeight > text.clientHeight + 2) {
@@ -164,6 +165,22 @@ export class TodayView extends ItemView {
         .setTitle(todo.highlighted ? t('取消星标') : t('星标'))
         .setIcon('star')
         .onClick(() => this.change(todo, path, (target) => { target.highlighted = !target.highlighted; })));
+      // 发到 GitHub（会员）：发过的给「在 GitHub 打开 #42」；登录了、连着 GitHub 才有「发到 GitHub」
+      const issue = this.plugin.github?.issueOf(todo.text);
+      if (issue) {
+        menu.addItem((item) => item
+          .setTitle(t('在 GitHub 打开 #{number}', { number: issue.number }))
+          .setIcon('github')
+          .onClick(() => window.open(issue.url)));
+      } else if (this.plugin.github?.ready()) {
+        const file = this.plugin.fileAt(this.plugin.pathFor(this.shownDate()));
+        if (file) {
+          menu.addItem((item) => item
+            .setTitle(t('发到 GitHub'))
+            .setIcon('send')
+            .onClick(() => this.plugin.github.send({ file, todo, path })));
+        }
+      }
       menu.addItem((item) => item
         .setTitle(t('删除'))
         .setIcon('trash-2')
