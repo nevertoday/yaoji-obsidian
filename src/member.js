@@ -7,6 +7,10 @@ import * as obsidian from 'obsidian';
 const { requestUrl } = obsidian;
 
 export const MEMBER_BASE = 'https://vip.xiaoxiaodong.ai/api/yaoji';
+// 会员站接口 v1（数据中台方案 B5）：带上这个 Obsidian 插件的应用密钥，同样的请求走 /api/v1/products/yaoji/…（会员站按应用限额、
+// 记用量，回答和原来一样）。只在连正式会员站时用；登录页仍是原地址。密钥只用来认应用、记账，不是密码。
+const CLIENT_KEY = 'xxdapp_mjwtP9upZ7W5-ciOvpKZBxPI-Q2SFf7n';
+const V1_BASE = 'https://vip.xiaoxiaodong.ai/api/v1/products/yaoji';
 export const AUTH_ACTION = 'yaoji-auth';
 export const REDIRECT_URI = `obsidian://${AUTH_ACTION}`;
 const LOGIN_WAIT_MS = 10 * 60 * 1000;
@@ -120,10 +124,13 @@ export class MemberClient {
       if (!session) throw memberError('auth_required');
       headers.Authorization = `Bearer ${session.token}`;
     }
+    const base = this.base();
+    const viaV1 = Boolean(CLIENT_KEY) && base === MEMBER_BASE;
+    if (viaV1) headers['X-Xxd-Client-Key'] = CLIENT_KEY;
     let response;
     try {
       response = await requestUrl({
-        url: `${this.base()}${path}`,
+        url: `${viaV1 ? V1_BASE : base}${path}`,
         method: 'POST',
         contentType: 'application/json',
         headers,
