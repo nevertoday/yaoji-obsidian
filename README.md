@@ -31,9 +31,17 @@
 
 日记放在哪、文件名（moment 格式，和日记插件一样）、待办放在哪个标题下。用了日记插件的模板时，多一行「新日记用的模板」。
 
+## 和浏览器扩展一起用
+
+电脑版 Obsidian 里，插件在本机开一个只给浏览器扩展用的接口（`127.0.0.1:27125`，别的电脑连不上）。扩展设置里点「连接」，再在 Obsidian 里点「允许」就连上，不用装 Local REST API、不用 API Key 和证书。
+
+- 只认配对过的浏览器扩展；网页发来的请求一律拒绝。
+- 读写的只有库里的笔记和附件，碰不到 `.obsidian` 里的设置和插件。
+- 设置里能看到连着的浏览器，随时断开。
+
 ## 联网和隐私
 
-这个版本不联网，只读写你库里的日记文件。
+插件不连外网，只读写你库里的日记文件；上面那个本机接口只在你自己的电脑上。
 
 ---
 
@@ -49,4 +57,6 @@ Keeps today’s to-dos in today’s daily note.
 
 The file format is plain Markdown, identical to the “今日待办 / Today’s To-dos” browser extension, so both can work on the same notes.
 
-**Network & privacy:** this version makes no network requests; it only reads and writes daily notes in your vault.
+**Browser extension:** on desktop the plugin opens a local-only endpoint (`127.0.0.1:27125`) for the companion browser extension. Click “Connect” in the extension and “Allow” in Obsidian; no Local REST API, API key or certificate needed. Only paired extensions are accepted, web pages are refused, and `.obsidian` is never readable or writable through it. Paired browsers are listed in settings and can be disconnected.
+
+**Network & privacy:** the plugin makes no internet requests; it only reads and writes notes in your vault, and the local endpoint is reachable from your own computer only.
