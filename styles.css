@@ -38,37 +38,72 @@
   color: var(--text-muted);
 }
 
-/* ---------- 侧边栏「今天」 ---------- */
+/* ---------- 侧边栏「今天」：整套照浏览器扩展的侧边栏（GitHub 问题 #22 方案 A） ----------
+   颜色、字、线都是扩展 core/ui-tokens.css 的值；深浅跟着 Obsidian（.theme-dark）。 */
 
 .yaoji-today {
+  --yaoji-ink: #111111;
+  --yaoji-muted: #777777;
+  --yaoji-line: #e7e7ea;
+  --yaoji-line-strong: #c9c9ce;
+  --yaoji-check-line: rgba(17, 17, 17, 0.34);
+  --yaoji-check-on: #535353;
+  --yaoji-hover: rgba(17, 17, 17, 0.04);
+  --yaoji-lucky: #a87a08;
+  --yaoji-lucky-dot: #f5b301;
+  --yaoji-repo-wash: 5%;
+  /* 勾上时方块里那个勾（ui-icons.js 的 Check 同款细线）：浅色是白勾 */
+  --yaoji-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fcfcfc' stroke-width='2.4' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='m5.5 12.5 4.5 4.5 8.5-9'/%3E%3C/svg%3E");
+  --yaoji-repo-1: #4a7fb5;
+  --yaoji-repo-2: #3d9470;
+  --yaoji-repo-3: #b9823e;
+  --yaoji-repo-4: #ad5a86;
+  --yaoji-repo-5: #6a6dbb;
+  --yaoji-repo-6: #2f95a0;
+  --yaoji-repo-7: #c0663f;
+  --yaoji-repo-8: #8a7e3f;
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-2);
-  padding: var(--size-4-3) var(--size-4-3) var(--size-4-4);
+  padding: 0 !important;
+  color: var(--yaoji-ink);
+  font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
 }
 
+.theme-dark .yaoji-today {
+  --yaoji-ink: #f3f0ea;
+  --yaoji-muted: #a7a194;
+  --yaoji-line: #34322b;
+  --yaoji-line-strong: #4c483f;
+  --yaoji-check-line: rgba(243, 240, 234, 0.34);
+  --yaoji-check-on: #b5b3ad;
+  --yaoji-hover: rgba(255, 255, 255, 0.05);
+  --yaoji-lucky: #f6c765;
+  --yaoji-lucky-dot: #f6c765;
+  --yaoji-repo-wash: 9%;
+  --yaoji-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23201f1a' stroke-width='2.4' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='m5.5 12.5 4.5 4.5 8.5-9'/%3E%3C/svg%3E");
+}
+
+/* 标头：今天 · 10/25 · 周日 */
 .yaoji-head {
   display: flex;
   align-items: center;
-  min-height: var(--size-4-8);
+  gap: 8px;
+  min-height: 34px;
+  padding: 14px 16px 2px 20px;
 }
 
 .yaoji-day {
   display: flex;
   align-items: baseline;
-  gap: var(--size-4-2);
+  gap: 10px;
   min-width: 0;
 }
 
 .yaoji-date {
-  font-size: var(--font-ui-medium);
-  font-weight: var(--font-semibold);
-  color: var(--text-normal);
-}
-
-.yaoji-weekday {
-  font-size: var(--font-ui-small);
-  color: var(--text-faint);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--yaoji-ink);
 }
 
 .yaoji-today button.yaoji-today-link:not(.clickable-icon),
@@ -78,17 +113,18 @@
   border: none;
   background: none;
   box-shadow: none;
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  color: var(--yaoji-muted);
   cursor: pointer;
 }
 
 .yaoji-today button.yaoji-today-link:not(.clickable-icon):hover,
 .yaoji-today button.yaoji-left-link:not(.clickable-icon):hover {
-  color: var(--text-normal);
+  color: var(--yaoji-ink);
 }
 
-/* 翻前后一天：移到日期这一行才出现 */
+/* 翻前后一天：移到标头这一行才出现 */
 .yaoji-nav {
   display: flex;
   margin-inline-start: auto;
@@ -102,45 +138,173 @@
   opacity: 1;
 }
 
-.yaoji-input {
-  width: 100%;
+/* 标头下面一行：● 吉 · 金匮 | ✓ 1 */
+.yaoji-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 20px 0;
+  font-size: 12px;
+  color: var(--yaoji-muted);
 }
 
+.yaoji-meta.is-hidden {
+  display: none;
+}
+
+.yaoji-lucky {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--yaoji-lucky);
+  font-weight: 600;
+}
+
+.yaoji-lucky::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--yaoji-lucky-dot);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yaoji-lucky-dot) 15%, transparent);
+}
+
+.yaoji-meta-sep {
+  width: 1px;
+  height: 11px;
+  background: var(--yaoji-line-strong);
+}
+
+.yaoji-done-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--yaoji-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.yaoji-done-icon,
+.yaoji-done-icon svg {
+  width: 12px;
+  height: 12px;
+  color: var(--yaoji-muted);
+  stroke-width: 2;
+}
+
+/* 方的输入框，前面一个 + */
+.yaoji-input-box {
+  position: relative;
+  margin: 12px 12px 14px;
+}
+
+.yaoji-input-plus {
+  position: absolute;
+  inset-inline-start: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: var(--yaoji-muted);
+  pointer-events: none;
+}
+
+.yaoji-input-plus svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.5;
+}
+
+.yaoji-today input.yaoji-input {
+  width: 100%;
+  height: 40px;
+  padding: 10px 12px 10px 36px;
+  border: 1px solid var(--yaoji-line-strong);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--yaoji-ink);
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.yaoji-today input.yaoji-input::placeholder {
+  color: var(--yaoji-muted);
+}
+
+.yaoji-today input.yaoji-input:focus {
+  border-color: color-mix(in srgb, var(--yaoji-ink) 40%, var(--yaoji-line-strong));
+  box-shadow: none;
+}
+
+/* 一行一件，细线隔开 */
 .yaoji-list {
   display: flex;
   flex-direction: column;
+  border-top: 1px solid var(--yaoji-line);
 }
 
 .yaoji-item {
   display: flex;
   align-items: flex-start;
-  gap: var(--size-4-2);
-  padding: var(--size-4-1) var(--size-4-1);
-  padding-inline-start: calc(var(--size-4-1) + var(--depth, 0) * var(--size-4-5));
-  border-radius: var(--radius-s);
+  gap: 12px;
+  padding: 11px 16px 11px calc(20px + var(--depth, 0) * 22px);
+  border-bottom: 1px solid var(--yaoji-line);
 }
 
 .yaoji-item:hover {
-  background: var(--background-modifier-hover);
+  background: var(--yaoji-hover);
 }
 
-.yaoji-today .yaoji-check {
+/* 方的勾：细边；勾上是墨色实底、白色的勾 */
+.yaoji-today input.yaoji-check {
+  -webkit-appearance: none;
+  appearance: none;
   flex: none;
-  margin: 3px 0 0;
+  width: 18px;
+  height: 18px;
+  margin: 1.5px 0 0;
+  border: 1px solid var(--yaoji-check-line);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+}
+
+.yaoji-today input.yaoji-check:checked {
+  background: var(--yaoji-check-on) var(--yaoji-tick) center / 14px 14px no-repeat;
+  border-color: transparent;
+}
+
+.yaoji-today input.yaoji-check:checked::after {
+  content: none;
+}
+
+.yaoji-today input.yaoji-check:focus-visible {
+  outline: 2px solid var(--yaoji-line-strong);
+  outline-offset: 2px;
+}
+
+.yaoji-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .yaoji-text {
-  flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--text-normal);
-  line-height: var(--line-height-normal);
+  color: var(--yaoji-ink);
+  font-size: 14px;
+  line-height: 21px;
 }
 
 .yaoji-text > :first-child { margin-top: 0; }
 .yaoji-text > :last-child { margin-bottom: 0; }
 .yaoji-text p { margin: 0; }
-.yaoji-text img { max-height: 48px; width: auto; border-radius: var(--radius-s); vertical-align: middle; }
+.yaoji-text a { color: inherit; text-decoration-color: var(--yaoji-line-strong); }
+.yaoji-text img { max-height: 48px; width: auto; vertical-align: middle; }
 
 /* 长的折成两行，点了展开 */
 .yaoji-item:not(.is-open) .yaoji-text {
@@ -154,22 +318,59 @@
 
 .yaoji-item.is-done .yaoji-text,
 .yaoji-item.is-done .yaoji-text p {
-  color: var(--text-faint);
+  color: var(--yaoji-muted);
   text-decoration: line-through;
+  text-decoration-color: var(--yaoji-muted);
 }
 
-/* 星标 = 金线：加粗 + 一条细的金色下划线（文件里是 ==…==） */
-.yaoji-item.is-star .yaoji-text p,
+/* 星标：加粗 + 一条墨色的线（和扩展一样）；线在字下面 6px，折两行时底下留出位置，不被裁掉 */
 .yaoji-item.is-star .yaoji-text {
-  font-weight: var(--font-semibold);
+  padding-bottom: 6px;
+}
+
+.yaoji-item.is-star .yaoji-text,
+.yaoji-item.is-star .yaoji-text p {
+  font-weight: 600;
   text-decoration: underline;
-  text-decoration-color: rgba(var(--color-yellow-rgb), 0.9);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
+  text-decoration-color: color-mix(in srgb, var(--yaoji-ink) 70%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 5.88px;
+}
+
+/* GitHub 问题：整行一层极浅的项目色，字下面一个牌子「■ xposter #40」 */
+.yaoji-item.has-issue {
+  background: color-mix(in srgb, var(--yaoji-issue) var(--yaoji-repo-wash), transparent);
+}
+
+.yaoji-issue {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--yaoji-ink) 85%, var(--yaoji-muted));
+}
+
+.yaoji-issue::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  background: var(--yaoji-issue);
+}
+
+.yaoji-today a.yaoji-issue-num {
+  color: var(--yaoji-issue);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.yaoji-today a.yaoji-issue-num:hover {
+  text-decoration: underline;
 }
 
 .yaoji-left {
-  padding-top: var(--size-4-1);
+  padding: 12px 20px;
+  font-size: 12px;
+  color: var(--yaoji-muted);
 }
 
 .yaoji-left.is-hidden {
@@ -177,7 +378,8 @@
 }
 
 .yaoji-left b {
-  font-weight: var(--font-semibold);
+  font-weight: 600;
+  color: var(--yaoji-ink);
   font-variant-numeric: tabular-nums;
 }
 

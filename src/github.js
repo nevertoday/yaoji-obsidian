@@ -21,11 +21,6 @@ globalThis.TodoPlainText = globalThis.TodoPlainText || TodoPlainText;
 
 export const ISSUE_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)(?![\w/])/g;
 
-// 侧边栏里问题地址缩成「xposter #42」，点了在 GitHub 打开（文件里还是完整地址）
-export function shortIssueLinks(text) {
-  return String(text || '').replace(ISSUE_URL_RE, (url, repo, number) => `[${repo.split('/').pop()} #${number}](${url})`);
-}
-
 function keepLatest(map, limit) {
   const entries = Object.entries(map || {});
   return Object.fromEntries(entries.slice(Math.max(0, entries.length - limit)));

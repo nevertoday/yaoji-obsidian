@@ -5,6 +5,10 @@
 export const LANGUAGES = ['zh', 'zh-TW', 'en', 'ja', 'ko', 'es', 'fr', 'de', 'pt', 'ru', 'ar', 'th', 'vi'];
 
 export const MESSAGES = {
+  "今天": {"zh-TW":"今天", "en":"Today", "ja":"今日", "ko":"오늘", "es":"Hoy", "fr":"Aujourd'hui", "de":"Heute", "pt":"Hoje", "ru":"Сегодня", "ar":"اليوم", "th":"วันนี้", "vi":"Hôm nay"},
+  "吉": {"zh-TW":"吉", "en":"Auspicious", "ja":"吉", "ko":"길", "es":"Propicio", "fr":"Faste", "de":"Glückstag", "pt":"Auspicioso", "ru":"Благоприятный", "ar":"مبارك", "th":"มงคล", "vi":"Tốt"},
+  "添加任务，回车保存": {"zh-TW":"新增任務，Enter 儲存", "en":"Add a task, Enter to save", "ja":"タスクを追加、Enter で保存", "ko":"할 일 추가, Enter로 저장", "es":"Añade una tarea, Enter para guardar", "fr":"Ajoutez une tâche, Entrée pour enregistrer", "de":"Aufgabe eingeben, Enter speichert", "pt":"Adicione uma tarefa, Enter para salvar", "ru":"Добавьте задачу, Enter — сохранить", "ar":"أضف مهمة، Enter للحفظ", "th":"เพิ่มงาน กด Enter เพื่อบันทึก", "vi":"Thêm việc, Enter để lưu"},
+  "做完 {count} 件": {"zh-TW":"做完 {count} 件", "en":"{count} done", "ja":"{count} 件完了", "ko":"{count}개 완료", "es":"{count} hechas", "fr":"{count} faites", "de":"{count} erledigt", "pt":"{count} feitas", "ru":"Сделано: {count}", "ar":"أُنجز {count}", "th":"เสร็จ {count} รายการ", "vi":"Xong {count} việc"},
   "会员": {"zh-TW":"會員", "en":"Member", "ja":"会員", "ko":"회원", "es":"Miembro", "fr":"Membre", "de":"Mitglied", "pt":"Assinante", "ru":"Подписка", "ar":"مشترك", "th":"สมาชิก", "vi":"Thành viên"},
   "小小东账号": {"zh-TW":"小小東帳號", "en":"Xiaoxiaodong account", "ja":"Xiaoxiaodong アカウント", "ko":"Xiaoxiaodong 계정", "es":"Cuenta Xiaoxiaodong", "fr":"Compte Xiaoxiaodong", "de":"Xiaoxiaodong-Konto", "pt":"Conta Xiaoxiaodong", "ru":"Аккаунт Xiaoxiaodong", "ar":"حساب Xiaoxiaodong", "th":"บัญชี Xiaoxiaodong", "vi":"Tài khoản Xiaoxiaodong"},
   "登录": {"zh-TW":"登入", "en":"Sign in", "ja":"ログイン", "ko":"로그인", "es":"Iniciar sesión", "fr":"Se connecter", "de":"Anmelden", "pt":"Entrar", "ru":"Войти", "ar":"تسجيل الدخول", "th":"เข้าสู่ระบบ", "vi":"Đăng nhập"},

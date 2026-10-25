@@ -1,11 +1,31 @@
-// 侧边栏里的「今天」（方案 B）：顶上一行输入框，回车加到最后；下面是这一天的事项。
+// 侧边栏里的「今天」：顶上一行输入框，回车加到最后；下面是这一天的事项。
+// 样子整套照浏览器扩展的侧边栏（GitHub 问题 #22 方案 A）：标头「今天 · 10/25 · 周日」、吉日和做完几件、
+// 方的输入框、一行一件细线隔开、墨色方勾、星标加粗一条线、GitHub 问题是字下面的项目色牌子。深浅跟着 Obsidian。
 // 全按日记文件画：点方框、星标、删除都是改文件，文件一变（这里改的、在笔记里改的、手机同步来的）就重画。
 import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
 import { addDays, appendTodo, dateKey, deleteTodo, editTodo, readTodos } from './today.js';
-import { shortIssueLinks } from './github.js';
+import { ISSUE_URL_RE } from './github.js';
+import G from './vendor/github-issues.js';
+import { Solar } from 'lunar-javascript';
 
 const { ItemView, MarkdownRenderer, Menu, setIcon } = obsidian;
+
+// 黄道吉日（和扩展一样只在中文界面里说）：值神是吉的那天，标头下面一行「吉 · 金匮」
+function luckyDay(date) {
+  if (!['zh', 'zh-TW'].includes(language())) return '';
+  try {
+    const lunar = Solar.fromDate(date).getLunar();
+    return lunar.getDayTianShenLuck() === '吉' ? lunar.getDayTianShen() : '';
+  } catch {
+    return '';
+  }
+}
+
+// 做完几件（连子任务）
+function doneCount(list) {
+  return (list || []).reduce((sum, todo) => sum + (todo.checked ? 1 : 0) + doneCount(todo.children), 0);
+}
 
 export const VIEW_TYPE = 'yaoji-today-view';
 export const VIEW_ICON = 'calendar-check';
@@ -35,8 +55,11 @@ export class TodayView extends ItemView {
     root.addClass('yaoji-today');
 
     this.headerEl = root.createDiv({ cls: 'yaoji-head' });
-    this.inputEl = root.createEl('input', {
-      type: 'text', cls: 'yaoji-input', attr: { placeholder: t('加一件事，回车'), 'aria-label': t('添加待办') }
+    this.metaEl = root.createDiv({ cls: 'yaoji-meta' });
+    const inputBox = root.createDiv({ cls: 'yaoji-input-box' });
+    setIcon(inputBox.createSpan({ cls: 'yaoji-input-plus' }), 'plus');
+    this.inputEl = inputBox.createEl('input', {
+      type: 'text', cls: 'yaoji-input', attr: { placeholder: t('添加任务，回车保存'), 'aria-label': t('添加待办') }
     });
     this.listEl = root.createDiv({ cls: 'yaoji-list' });
     this.leftEl = root.createDiv({ cls: 'yaoji-left' });
@@ -95,6 +118,7 @@ export class TodayView extends ItemView {
     const todos = readTodos(content, this.plugin.settings.section, this.plugin.parser);
 
     this.drawHead(date);
+    this.drawMeta(date, todos);
     this.listEl.empty();
     const sourcePath = file?.path || '';
     const draw = (list, parentPath, depth) => {
@@ -108,13 +132,18 @@ export class TodayView extends ItemView {
     this.drawLeft();
   }
 
+  // 标头：今天写「今天 · 10/25 · 周日」，别的天写「10/23 · 周五」+ 回到今天（和扩展一样）
   drawHead(date) {
     const head = this.headerEl;
     head.empty();
     const locale = LOCALES[language()] || language();
     const day = head.createDiv({ cls: 'yaoji-day' });
-    day.createSpan({ cls: 'yaoji-date', text: new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric' }).format(date) });
-    day.createSpan({ cls: 'yaoji-weekday', text: new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date) });
+    const parts = [
+      ...(this.date ? [] : [t('今天')]),
+      `${date.getMonth() + 1}/${date.getDate()}`,
+      new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
+    ];
+    day.createSpan({ cls: 'yaoji-date', text: parts.join(' · ') });
     if (this.date) {
       const back = day.createEl('button', { cls: 'yaoji-today-link', text: t('回到今天') });
       back.addEventListener('click', () => this.goTo(null));
@@ -129,21 +158,51 @@ export class TodayView extends ItemView {
     next.addEventListener('click', () => this.goTo(addDays(date, 1)));
   }
 
+  // 标头下面一行：吉日（金色，带一个小点）、做完几件。都没有就不占地方
+  drawMeta(date, todos) {
+    const meta = this.metaEl;
+    meta.empty();
+    const lucky = luckyDay(date);
+    const done = doneCount(todos);
+    meta.toggleClass('is-hidden', !lucky && !done);
+    if (lucky) meta.createSpan({ cls: 'yaoji-lucky', text: `${t('吉')} · ${lucky}` });
+    if (lucky && done) meta.createSpan({ cls: 'yaoji-meta-sep' });
+    if (done) {
+      const count = meta.createSpan({ cls: 'yaoji-done-count', attr: { 'aria-label': t('做完 {count} 件', { count: done }) } });
+      setIcon(count.createSpan({ cls: 'yaoji-done-icon' }), 'check');
+      count.createSpan({ text: String(done) });
+    }
+  }
+
   drawItem(todo, path, depth, sourcePath) {
     const row = this.listEl.createDiv({ cls: 'yaoji-item' });
     row.toggleClass('is-done', !!todo.checked);
     row.toggleClass('is-star', !!todo.highlighted);
     row.style.setProperty('--depth', String(depth));
 
-    const box = row.createEl('input', { type: 'checkbox', cls: 'task-list-item-checkbox yaoji-check' });
+    const box = row.createEl('input', { type: 'checkbox', cls: 'yaoji-check' });
     box.checked = !!todo.checked;
     box.addEventListener('click', (event) => {
       event.preventDefault();
       this.change(todo, path, (item) => { item.checked = !item.checked; });
     });
 
-    const text = row.createDiv({ cls: 'yaoji-text' });
-    MarkdownRenderer.render(this.app, shortIssueLinks(todo.text), text, sourcePath, this).then(() => {
+    const body = row.createDiv({ cls: 'yaoji-body' });
+    const text = body.createDiv({ cls: 'yaoji-text' });
+    // GitHub 问题：字里不再写地址，字下面一个项目色的小牌子「■ xposter #40」，点它在 GitHub 打开
+    const issues = G.findIssueUrls(String(todo.text || ''));
+    if (issues.length) {
+      const issue = issues[0];
+      const color = `var(--yaoji-repo-${G.repoColor(issue.repo, this.plugin.settings.github?.colors || {})})`;
+      row.addClass('has-issue');
+      row.style.setProperty('--yaoji-issue', color);
+      const badge = body.createDiv({ cls: 'yaoji-issue' });
+      badge.createSpan({ cls: 'yaoji-issue-name', text: issue.repo.split('/').pop() });
+      const link = badge.createEl('a', { cls: 'yaoji-issue-num', text: `#${issue.number}`, href: issue.url });
+      link.addEventListener('click', (event) => { event.preventDefault(); window.open(issue.url); });
+    }
+    const shown = String(todo.text || '').replace(ISSUE_URL_RE, '').replace(/[ \t]+$/gm, '');
+    MarkdownRenderer.render(this.app, shown, text, sourcePath, this).then(() => {
       // 太长的折成两行，点一下展开
       window.requestAnimationFrame(() => {
         if (text.scrollHeight > text.clientHeight + 2) {
