@@ -200,3 +200,46 @@ export function sectionEndLine(content, section, parser) {
   }
   return last;
 }
+
+// ---------- 侧边栏改一件事 ----------
+// path 是这件事在树里的位置（[2] = 第三件，[2, 0] = 第三件的第一个子任务）。
+// 列表是按文件画的，文件一变就重画，所以 path 和文件对得上；再用文字核对一遍，对不上就不动（返回 null）。
+
+export function todoAt(todos, path) {
+  let list = todos;
+  let todo = null;
+  for (const index of path) {
+    todo = list?.[index];
+    if (!todo) return null;
+    list = todo.children;
+  }
+  return todo;
+}
+
+export function editTodo(content, path, expectText, change, section, parser) {
+  const found = parser.extractSection(String(content || ''), section);
+  if (!found) return null;
+  const todos = parser.parseTodos(found.content);
+  const todo = todoAt(todos, path);
+  if (!todo || todo.text !== expectText) return null;
+  change(todo);
+  return parser.replaceSection(content, section, parser.todosToMarkdown(todos));
+}
+
+export function deleteTodo(content, path, expectText, section, parser) {
+  const found = parser.extractSection(String(content || ''), section);
+  if (!found) return null;
+  const todos = parser.parseTodos(found.content);
+  const parent = path.length > 1 ? todoAt(todos, path.slice(0, -1)) : null;
+  const list = path.length > 1 ? parent?.children : todos;
+  const index = path[path.length - 1];
+  if (!list?.[index] || list[index].text !== expectText) return null;
+  list.splice(index, 1);
+  return parser.replaceSection(content, section, parser.todosToMarkdown(todos));
+}
+
+// 一天的事项（树）。没有这一节返回空
+export function readTodos(content, section, parser) {
+  const found = parser.extractSection(String(content || ''), section);
+  return found ? parser.parseTodos(found.content) : [];
+}

@@ -37,3 +37,146 @@
 .yaoji-path-preview {
   color: var(--text-muted);
 }
+
+/* ---------- 侧边栏「今天」 ---------- */
+
+.yaoji-today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-3) var(--size-4-3) var(--size-4-4);
+}
+
+.yaoji-head {
+  display: flex;
+  align-items: center;
+  min-height: var(--size-4-8);
+}
+
+.yaoji-day {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+
+.yaoji-date {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.yaoji-weekday {
+  font-size: var(--font-ui-small);
+  color: var(--text-faint);
+}
+
+.yaoji-today button.yaoji-today-link:not(.clickable-icon),
+.yaoji-today button.yaoji-left-link:not(.clickable-icon) {
+  padding: 0;
+  height: auto;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.yaoji-today button.yaoji-today-link:not(.clickable-icon):hover,
+.yaoji-today button.yaoji-left-link:not(.clickable-icon):hover {
+  color: var(--text-normal);
+}
+
+/* 翻前后一天：移到日期这一行才出现 */
+.yaoji-nav {
+  display: flex;
+  margin-inline-start: auto;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.yaoji-head:hover .yaoji-nav,
+.yaoji-nav:focus-within,
+.is-mobile .yaoji-nav {
+  opacity: 1;
+}
+
+.yaoji-input {
+  width: 100%;
+}
+
+.yaoji-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.yaoji-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-1);
+  padding-inline-start: calc(var(--size-4-1) + var(--depth, 0) * var(--size-4-5));
+  border-radius: var(--radius-s);
+}
+
+.yaoji-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yaoji-today .yaoji-check {
+  flex: none;
+  margin: 3px 0 0;
+}
+
+.yaoji-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-normal);
+  line-height: var(--line-height-normal);
+}
+
+.yaoji-text > :first-child { margin-top: 0; }
+.yaoji-text > :last-child { margin-bottom: 0; }
+.yaoji-text p { margin: 0; }
+.yaoji-text img { max-height: 48px; width: auto; border-radius: var(--radius-s); vertical-align: middle; }
+
+/* 长的折成两行，点了展开 */
+.yaoji-item:not(.is-open) .yaoji-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.yaoji-item.is-long .yaoji-text { cursor: pointer; }
+
+.yaoji-item.is-done .yaoji-text,
+.yaoji-item.is-done .yaoji-text p {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+/* 星标 = 金线：加粗 + 一条细的金色下划线（文件里是 ==…==） */
+.yaoji-item.is-star .yaoji-text p,
+.yaoji-item.is-star .yaoji-text {
+  font-weight: var(--font-semibold);
+  text-decoration: underline;
+  text-decoration-color: rgba(var(--color-yellow-rgb), 0.9);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.yaoji-left {
+  padding-top: var(--size-4-1);
+}
+
+.yaoji-left.is-hidden {
+  display: none;
+}
+
+.yaoji-left b {
+  font-weight: var(--font-semibold);
+  font-variant-numeric: tabular-nums;
+}

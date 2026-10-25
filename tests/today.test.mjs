@@ -151,3 +151,23 @@ test('打开今天时光标停在事项最后一条', () => {
   assert.equal(sectionEndLine(content, '### 事项', parser), 4);
   assert.equal(sectionEndLine('### 事项\n', '### 事项', parser), 0);
 });
+
+import { deleteTodo, editTodo, readTodos, todoAt } from '../src/today.js';
+
+test('侧边栏勾选 / 星标：按位置找到那件，文字对得上才改', () => {
+  const content = '# 今天\n\n### 事项\n- [ ] 写周报\n    - [ ] 画图\n- [ ] 买菜\n\n### 想法\n不动\n';
+  const checked = editTodo(content, [0, 0], '画图', (todo) => { todo.checked = true; }, '### 事项', parser);
+  assert.equal(checked, '# 今天\n\n### 事项\n- [ ] 写周报\n    - [x] 画图\n- [ ] 买菜\n\n### 想法\n不动\n');
+  const starred = editTodo(content, [1], '买菜', (todo) => { todo.highlighted = true; }, '### 事项', parser);
+  assert.ok(starred.includes('- [ ] ==买菜=='));
+  // 文件刚被别处改过、位置上已经不是这件了：不动
+  assert.equal(editTodo(content, [1], '回邮件', (todo) => { todo.checked = true; }, '### 事项', parser), null);
+  assert.equal(todoAt(readTodos(content, '### 事项', parser), [0, 0]).text, '画图');
+});
+
+test('侧边栏删除：只删那一件，子任务跟着走，别的不动', () => {
+  const content = '### 事项\n- [ ] 写周报\n    - [ ] 画图\n- [ ] 买菜\n';
+  assert.equal(deleteTodo(content, [0], '写周报', '### 事项', parser), '### 事项\n- [ ] 买菜\n');
+  assert.equal(deleteTodo(content, [0, 0], '画图', '### 事项', parser), '### 事项\n- [ ] 写周报\n- [ ] 买菜\n');
+  assert.equal(deleteTodo(content, [1], '不对', '### 事项', parser), null);
+});

@@ -5,6 +5,43 @@
 export const LANGUAGES = ['zh', 'zh-TW', 'en', 'ja', 'ko', 'es', 'fr', 'de', 'pt', 'ru', 'ar', 'th', 'vi'];
 
 export const MESSAGES = {
+  '今日待办': {
+    'zh-TW': '今日待辦', en: 'Today’s To-dos', ja: '今日のToDo', ko: 'Today’s To-dos', es: 'Today’s To-dos', fr: 'Today’s To-dos',
+    de: 'Today’s To-dos', pt: 'Today’s To-dos', ru: 'Today’s To-dos', ar: 'Today’s To-dos', th: 'Today’s To-dos', vi: 'Today’s To-dos'
+  },
+  '在侧边栏打开': {
+    'zh-TW': '在側邊欄打開', en: 'Open in sidebar', ja: 'サイドバーで開く', ko: '사이드바에서 열기', es: 'Abrir en la barra lateral',
+    fr: 'Ouvrir dans la barre latérale', de: 'In der Seitenleiste öffnen', pt: 'Abrir na barra lateral', ru: 'Открыть на боковой панели',
+    ar: 'افتح في الشريط الجانبي', th: 'เปิดในแถบข้าง', vi: 'Mở ở thanh bên'
+  },
+  '回到今天': {
+    'zh-TW': '回到今天', en: 'Back to today', ja: '今日に戻る', ko: '오늘로 돌아가기', es: 'Volver a hoy', fr: 'Revenir à aujourd’hui',
+    de: 'Zurück zu heute', pt: 'Voltar para hoje', ru: 'Вернуться к сегодня', ar: 'العودة إلى اليوم', th: 'กลับไปวันนี้', vi: 'Về hôm nay'
+  },
+  '前一天': {
+    'zh-TW': '前一天', en: 'Previous day', ja: '前の日', ko: '전날', es: 'Día anterior', fr: 'Jour précédent',
+    de: 'Vorheriger Tag', pt: 'Dia anterior', ru: 'Предыдущий день', ar: 'اليوم السابق', th: 'วันก่อนหน้า', vi: 'Ngày trước'
+  },
+  '后一天': {
+    'zh-TW': '後一天', en: 'Next day', ja: '次の日', ko: '다음 날', es: 'Día siguiente', fr: 'Jour suivant',
+    de: 'Nächster Tag', pt: 'Dia seguinte', ru: 'Следующий день', ar: 'اليوم التالي', th: 'วันถัดไป', vi: 'Ngày sau'
+  },
+  '星标': {
+    'zh-TW': '星標', en: 'Star', ja: 'スターを付ける', ko: '별표', es: 'Destacar', fr: 'Ajouter une étoile',
+    de: 'Mit Stern markieren', pt: 'Destacar', ru: 'Отметить звёздочкой', ar: 'تمييز بنجمة', th: 'ติดดาว', vi: 'Gắn sao'
+  },
+  '取消星标': {
+    'zh-TW': '取消星標', en: 'Unstar', ja: 'スターを外す', ko: '별표 해제', es: 'Quitar destacado', fr: 'Retirer l’étoile',
+    de: 'Stern entfernen', pt: 'Remover destaque', ru: 'Снять звёздочку', ar: 'إزالة النجمة', th: 'เลิกติดดาว', vi: 'Bỏ gắn sao'
+  },
+  '删除': {
+    'zh-TW': '刪除', en: 'Delete', ja: '削除', ko: '삭제', es: 'Eliminar', fr: 'Supprimer', de: 'Löschen',
+    pt: 'Excluir', ru: 'Удалить', ar: 'حذف', th: 'ลบ', vi: 'Xóa'
+  },
+  '已删除': {
+    'zh-TW': '已刪除', en: 'Deleted', ja: '削除しました', ko: '삭제됨', es: 'Eliminado', fr: 'Supprimé', de: 'Gelöscht',
+    pt: 'Excluído', ru: 'Удалено', ar: 'حُذف', th: 'ลบแล้ว', vi: 'Đã xóa'
+  },
   '添加待办': {
     'zh-TW': '新增待辦', en: 'Add a to-do', ja: 'ToDo を追加', ko: '할 일 추가', es: 'Añadir una tarea', fr: 'Ajouter une tâche',
     de: 'Aufgabe hinzufügen', pt: 'Adicionar tarefa', ru: 'Добавить задачу', ar: 'إضافة مهمة', th: 'เพิ่มงาน', vi: 'Thêm việc'
