@@ -30,6 +30,15 @@ const MIME = {
 // 路径里不能有 ..，任何一段以点开头的都不碰：库的设置文件夹（一般叫 .obsidian，设置、插件、密钥都在那里；
 // 磁盘不分大小写时 .OBSIDIAN 也是它）、回收站、.git（钩子能跑程序）都在里面。
 // 冒号（盘符、NTFS 数据流）、控制字符、Windows 短文件名（OBSIDI~1 也可能指向 .obsidian）也不碰
+// 控制字符（0–31、127）：逐个比字符码，不写在正则里（Obsidian 审核的检查不认正则里的控制字符）
+function hasControlChar(text) {
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code < 32 || code === 127) return true;
+  }
+  return false;
+}
+
 export function cleanVaultPath(raw, configDir) {
   let decoded;
   try {
@@ -38,7 +47,7 @@ export function cleanVaultPath(raw, configDir) {
     return null;
   }
   const parts = decoded.replace(/\\/g, '/').split('/').filter(Boolean);
-  if (parts.some((part) => part.startsWith('.') || /[:\u0000-\u001f\u007f]/.test(part) || (part.length <= 12 && /~\d/.test(part)))) return null;
+  if (parts.some((part) => part.startsWith('.') || part.includes(':') || hasControlChar(part) || (part.length <= 12 && /~\d/.test(part)))) return null;
   const config = String(configDir || '').replace(/^\/+|\/+$/g, '').toLowerCase();
   if (!config || (parts[0] || '').toLowerCase() === config) return null;
   return parts.join('/');
