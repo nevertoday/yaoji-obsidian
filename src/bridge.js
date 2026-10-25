@@ -368,7 +368,8 @@ class PairModal extends Modal {
     deny.addEventListener('click', () => { this.answer(false); this.close(); });
     const allow = row.createEl('button', { cls: 'mod-cta', text: t('允许') });
     allow.addEventListener('click', () => { this.answer(true); this.close(); });
-    window.setTimeout(() => allow.focus(), 0);
+    // 默认停在「不允许」：在 Obsidian 里打字时顺手按的回车不会把库交出去
+    window.setTimeout(() => deny.focus(), 0);
   }
 
   onClose() {
