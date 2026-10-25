@@ -1,0 +1,39 @@
+/* 今日待办 · 只用 Obsidian 自己的变量，跟着主题走 */
+
+.yaoji-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-3);
+}
+
+.notice button.yaoji-notice-action:not(.clickable-icon) {
+  flex: none;
+  margin-inline-start: auto;
+  padding: 0;
+  height: auto;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text-accent);
+  font-size: inherit;
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+}
+
+.notice button.yaoji-notice-action:not(.clickable-icon):hover {
+  color: var(--text-accent-hover);
+  background: none;
+}
+
+.yaoji-add-modal .modal-close-button {
+  display: none;
+}
+
+.yaoji-add-input {
+  width: 100%;
+  font-size: var(--font-ui-medium);
+}
+
+.yaoji-path-preview {
+  color: var(--text-muted);
+}

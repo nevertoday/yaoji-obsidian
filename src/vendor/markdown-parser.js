@@ -1,0 +1,464 @@
+/**
+ * Markdown Todo 解析器
+ * 负责解析和重构 Markdown 格式的 Todo 列表
+ */
+class MarkdownParser {
+  /**
+   * 插件内部元数据标记：用于在 Todo 文本中持久化“已发送到灵感”等状态
+   * 采用 Obsidian 的 %%...%% 注释格式（预览模式下不显示）
+   */
+  static META = {
+    INSPIRATION_SENT: '%%yaoji:inspiration%%',
+    MEMORY_SENT: '%%yaoji:memory%%',
+    TODO_ID_KEY: 'todoid',
+    TODO_ID_PREFIX: '%%yaoji:todoid:'
+  };
+
+  // 任务行：- [ ] / * [ ] / + [ ]，允许空格或 Tab 缩进
+  static TODO_LINE = /^([ \t]*)([-*+]) \[([ xX])\]\s*(.*)$/;
+
+  /** 缩进宽度，Tab 按 4 个空格计 */
+  static indentWidth(whitespace) {
+    return String(whitespace || '').replace(/\t/g, '    ').length;
+  }
+
+  /** 原文件使用的缩进单位：有 Tab 用 Tab，否则取任务行最小的缩进空格数 */
+  static detectIndentUnit(lines) {
+    let minSpaces = 0;
+    for (const line of lines) {
+      const match = line.match(MarkdownParser.TODO_LINE);
+      if (!match || !match[1]) continue;
+      if (match[1].includes('\t')) return '\t';
+      if (!minSpaces || match[1].length < minSpaces) minSpaces = match[1].length;
+    }
+    return minSpaces === 2 ? '  ' : '    ';
+  }
+
+  /** todosToMarkdown 统一按 4 空格一级输出，这里换成原文件的缩进单位 */
+  static reindentLine(line, unit) {
+    if (unit === '    ') return line;
+    const leading = line.match(/^ */)[0].length;
+    const levels = Math.floor(leading / 4);
+    return unit.repeat(levels) + ' '.repeat(leading % 4) + line.slice(leading);
+  }
+
+  /**
+   * 从完整 Markdown 中提取指定板块
+   * @param {string} markdown - 完整的 Markdown 内容
+   * @param {string} sectionTitle - 板块标题(如 "### 事项")
+   * @returns {Object|null} { content: string, startLine: number, endLine: number }
+   */
+  extractSection(markdown, sectionTitle) {
+    const lines = markdown.split('\n');
+    let startLine = -1;
+    let endLine = lines.length;
+    let sectionLevel = 0;
+    const targetTitle = this.normalizeTitle(sectionTitle);
+
+    // 查找板块开始位置
+    for (let i = 0; i < lines.length; i++) {
+      const headerLevel = this.getHeaderLevel(lines[i]);
+      const line = lines[i].trim();
+      if (headerLevel > 0 && this.normalizeTitle(line) === targetTitle) {
+        startLine = i;
+        sectionLevel = headerLevel;
+        break;
+      }
+    }
+
+    if (startLine === -1) {
+      return null; // 未找到指定板块
+    }
+
+    // 查找板块结束位置(下一个同级或更高级标题)
+    for (let i = startLine + 1; i < lines.length; i++) {
+      const currentLevel = this.getHeaderLevel(lines[i]);
+      if (currentLevel > 0 && currentLevel <= sectionLevel) {
+        endLine = i;
+        break;
+      }
+    }
+
+    // 提取板块内容(不包括标题行)
+    const content = lines.slice(startLine + 1, endLine).join('\n');
+
+    return {
+      content,
+      startLine,
+      endLine
+    };
+  }
+
+  /**
+   * 写入前自检：把替换后的整份文件里这一节再读一遍，任务行一条都不能少。
+   * 少了（这一节被提前截断、或者替换错位）就返回 false，调用方不写入。
+   */
+  sectionRoundTrips(newContent, sectionTitle, newSectionContent) {
+    const countTasks = (text) => (String(text || '').match(/^[ \t]*[-*+] \[[ xX]\]/gm) || []).length;
+    const expected = countTasks(newSectionContent);
+    if (expected === 0) return true;
+    const section = this.extractSection(String(newContent || ''), sectionTitle);
+    return !!section && countTasks(section.content) >= expected;
+  }
+
+  /**
+   * 获取标题级别：只认顶格的标题。缩进的「### …」是上一条任务的续行（任务里 Shift+Enter 写的、
+   * 右键加进来的网页段落），不是新的一节——当成新的一节会让它下面的任务全部「消失」（docs/adversarial-test-2026-10-08.md P0-1）
+   * @param {string} line - 行内容
+   * @returns {number} 标题级别(1-6),非标题返回 0
+   */
+  getHeaderLevel(line) {
+    const match = String(line || '').match(/^(#{1,6})\s/);
+    return match ? match[1].length : 0;
+  }
+
+  /**
+   * 用户自己打的「%%yaoji:…%%」不能被当成今日待办的内部标记（会悄悄标成「已存进记忆」、字也没了）：
+   * 写入时在 yaoji 和冒号之间夹一个零宽空格，读出时去掉，用户看到的字一模一样（docs/adversarial-test-2026-10-08.md P3-10）
+   */
+  static escapeUserMarkers(text) {
+    return String(text ?? '')
+      // 空字符、强制改写文字方向的控制符（可以让一段字倒着显示、伪装成别的内容）不写进文件
+      .replace(/[\u0000\u202D\u202E]/g, '')
+      .replace(/%%yaoji:/gi, (m) => `${m.slice(0, -1)}\u200B:`);
+  }
+
+  static unescapeUserMarkers(text) {
+    return String(text ?? '').replace(/(%%yaoji)\u200B:/gi, '$1:');
+  }
+
+  /**
+   * 从任务末尾剥离插件元数据标记
+   * 支持多标记串联（例如：%%yaoji:inspiration%% %%yaoji:memory%% %%yaoji:todoid:xxx%%）
+   * @param {string} rawText
+   * @returns {{ text: string, meta: { inspirationSent: boolean, memorySent: boolean, todoMetaId: string|null } }}
+   */
+  stripMetaMarkers(rawText) {
+    let text = String(rawText || '').trim();
+    const meta = {
+      inspirationSent: false,
+      memorySent: false,
+      todoMetaId: null
+    };
+
+    const markerTailRegex = /\s*%%yaoji:([a-z0-9-]+)(?::([^%]*))?%%\s*$/i;
+
+    while (true) {
+      const match = markerTailRegex.exec(text);
+      if (!match) break;
+
+      const key = String(match[1] || '').toLowerCase();
+      const value = String(match[2] || '').trim();
+      if (key === 'inspiration') {
+        meta.inspirationSent = true;
+      } else if (key === 'memory') {
+        meta.memorySent = true;
+      } else if (key === MarkdownParser.META.TODO_ID_KEY && value) {
+        meta.todoMetaId = value;
+      } else {
+        break;
+      }
+
+      text = text.slice(0, match.index).trimEnd();
+    }
+
+    return { text, meta };
+  }
+
+  /**
+   * 构造任务末尾元数据标记文本
+   * @param {Object} todo
+   * @returns {string}
+   */
+  buildMetaMarkers(todo) {
+    const markers = [];
+    if (todo?.inspirationSent) {
+      markers.push(MarkdownParser.META.INSPIRATION_SENT);
+    }
+    if (todo?.memorySent) {
+      markers.push(MarkdownParser.META.MEMORY_SENT);
+    }
+    if (todo?.metaId) {
+      markers.push(`${MarkdownParser.META.TODO_ID_PREFIX}${todo.metaId}%%`);
+    }
+    return markers.join(' ');
+  }
+
+  /**
+   * 解析 Todo 列表
+   * 缩进按“相对上级”判断：2 空格、4 空格、Tab 缩进的子任务都能正确挂到父任务下。
+   * @param {string} sectionContent - 板块内容(不包括标题)
+   * @returns {Array<Object>} Todo 对象数组（树形）
+   */
+  /**
+   * 修复旧版本写坏的文件：以前缩进的「### …」会被当成新的一节，连续保存时这一段被一遍遍重复写进去。
+   * 只收起「紧挨着、一模一样、至少两行、并且里面有缩进标题行」的重复段——这是那个 bug 独有的样子，
+   * 用户自己连着加的两条同样的任务不会被动到。
+   */
+  static collapseRepeatedBlocks(lines) {
+    const indentedHeading = /^[ \t]+#{1,6}\s/;
+    if (!lines.some((line) => indentedHeading.test(line))) return lines;
+    const out = lines.slice();
+    const same = (a, b, k) => { for (let j = 0; j < k; j++) if (out[a + j] !== out[b + j]) return false; return true; };
+    for (let i = 0; i < out.length; i++) {
+      for (let k = 2; k <= Math.min(400, Math.floor((out.length - i) / 2)); k++) {
+        if (!same(i, i + k, k)) continue;
+        let hasHeading = false;
+        for (let j = 0; j < k; j++) if (indentedHeading.test(out[i + j])) { hasHeading = true; break; }
+        if (!hasHeading) continue;
+        while (i + 2 * k <= out.length && same(i, i + k, k)) out.splice(i + k, k);
+        break;
+      }
+    }
+    return out;
+  }
+
+  parseTodos(sectionContent) {
+    const lines = MarkdownParser.collapseRepeatedBlocks(String(sectionContent ?? '').split('\n'));
+    const todos = [];
+    const stack = []; // [{ todo, width }]，width 是该任务行的缩进宽度
+
+    for (let i = 0; i < lines.length; i++) {
+      const todoMatch = lines[i].match(MarkdownParser.TODO_LINE);
+      if (!todoMatch) continue;
+
+      const [, indentStr, bullet, checkMark, text] = todoMatch;
+      const width = MarkdownParser.indentWidth(indentStr);
+      while (stack.length > 0 && stack[stack.length - 1].width >= width) stack.pop();
+      const indent = stack.length;
+
+      // 解析持久化标记（从显示文本中剥离，但保留状态）
+      const { text: trimmedText, meta } = this.stripMetaMarkers(text);
+      const highlightMatch = trimmedText.match(/^==(.+)==$/);
+      let normalizedText = highlightMatch ? highlightMatch[1].trim() : trimmedText;
+      let highlighted = !!highlightMatch;
+
+      // 多行任务：紧跟其后、缩进比任务行更深的非任务行是任务正文的续行
+      const continuationLines = [];
+      let endLineIndex = i;
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j];
+        if (MarkdownParser.TODO_LINE.test(next)) break;
+        const contMatch = next.match(/^([ \t]+)(.*)$/);
+        if (!contMatch || MarkdownParser.indentWidth(contMatch[1]) <= width) break;
+        continuationLines.push(contMatch[2]);
+        endLineIndex = j;
+      }
+      if (continuationLines.length > 0) {
+        normalizedText = [normalizedText, ...continuationLines].join('\n');
+        // Obsidian 中跨行的 == == 高亮表现不稳定，这里仅对单行任务启用
+        highlighted = false;
+      }
+
+      const todo = {
+        id: this.generateId(),
+        checked: checkMark.toLowerCase() === 'x',
+        text: MarkdownParser.unescapeUserMarkers(normalizedText),
+        highlighted,
+        inspirationSent: meta.inspirationSent,
+        memorySent: meta.memorySent,
+        metaId: meta.todoMetaId,
+        indent,
+        children: [],
+        line: i,
+        raw: lines.slice(i, endLineIndex + 1).join('\n')
+      };
+      if (bullet !== '-') todo.bullet = bullet;
+
+      if (indent === 0) todos.push(todo);
+      else stack[stack.length - 1].todo.children.push(todo);
+      stack.push({ todo, width });
+      i = endLineIndex;
+    }
+
+    return todos;
+  }
+
+  /**
+   * 将 Todo 对象数组转回 Markdown
+   * @param {Array<Object>} todos - Todo 对象数组
+   * @returns {string} Markdown 格式的 Todo 列表
+   */
+  todosToMarkdown(todos) {
+    const lines = [];
+
+    const convertTodo = (todo) => {
+      // 刚点了「添加子任务」、还在输入框里没确认的那一条（_isNew）不写进文件：
+      // 确认时才算新加一条、才占免费版额度；按 Esc 放弃就当没有过
+      if (todo?._isNew) return;
+      // 使用 4 个空格表示一个缩进层级，贴合 Obsidian 默认缩进宽度
+      const indent = ' '.repeat((todo.indent || 0) * 4);
+      const checkMark = todo.checked ? 'x' : ' ';
+      const textLines = MarkdownParser.escapeUserMarkers(todo.text || '').split('\n');
+      const firstLine = textLines[0] || '';
+      let firstContent = todo.highlighted && textLines.length === 1 ? `==${firstLine}==` : firstLine;
+      const metaMarkers = this.buildMetaMarkers(todo);
+      if (metaMarkers) {
+        firstContent = `${firstContent} ${metaMarkers}`.trimEnd();
+      }
+      lines.push(`${indent}${todo.bullet || '-'} [${checkMark}] ${firstContent}`);
+      for (let i = 1; i < textLines.length; i++) {
+        lines.push(`${indent}    ${textLines[i] || ''}`);
+      }
+
+      // 递归处理子任务
+      if (todo.children && todo.children.length > 0) {
+        todo.children.forEach(child => convertTodo(child));
+      }
+    };
+
+    todos.forEach(todo => convertTodo(todo));
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 替换板块里的任务并保持文件其他部分不变
+   * @param {string} originalMarkdown - 原始完整 Markdown
+   * @param {string} sectionTitle - 板块标题
+   * @param {string} newSectionContent - todosToMarkdown 生成的任务列表
+   * @returns {string} 更新后的完整 Markdown
+   */
+  replaceSection(originalMarkdown, sectionTitle, newSectionContent) {
+    const section = this.extractSection(originalMarkdown, sectionTitle);
+
+    if (!section) {
+      // 如果板块不存在,添加到文件末尾
+      return originalMarkdown.trim() + '\n\n' + sectionTitle + '\n' + newSectionContent;
+    }
+
+    const lines = originalMarkdown.split('\n');
+    return [
+      ...lines.slice(0, section.startLine + 1),
+      this.mergeSectionContent(section.content, newSectionContent),
+      ...lines.slice(section.endLine)
+    ].join('\n');
+  }
+
+  /**
+   * 把新的任务列表写回板块，同时保留板块里不是任务的内容
+   * （小标题、备注、图片、空行、其他格式的列表等），这些内容插件界面不展示，但绝不能在保存时丢掉。
+   *
+   * 每段非任务内容跟随它上方的任务：任务被拖动时一起移动；任务被删除或改写时，
+   * 挂到更前面仍然存在的任务下方。板块开头和结尾的内容始终留在原位。
+   * 写回时沿用原文件的缩进单位（Tab / 2 空格 / 4 空格）。
+   */
+  mergeSectionContent(baseContent, generatedContent) {
+    const base = String(baseContent ?? '');
+    const generated = String(generatedContent ?? '');
+    if (!base) return generated;
+
+    const baseLines = base.split('\n');
+    const baseBlocks = this.collectTodoBlocks(baseLines);
+    const covered = new Set();
+    baseBlocks.forEach((block) => {
+      for (let i = block.start; i <= block.end; i++) covered.add(i);
+    });
+
+    // 非任务行按“上方最近的任务”分组；-1 表示在第一个任务之前
+    const preamble = [];
+    const attached = baseBlocks.map(() => []);
+    let owner = -1;
+    let blockCursor = 0;
+    baseLines.forEach((line, index) => {
+      while (blockCursor < baseBlocks.length && baseBlocks[blockCursor].start <= index) {
+        owner = blockCursor;
+        blockCursor += 1;
+      }
+      if (covered.has(index)) return;
+      (owner === -1 ? preamble : attached[owner]).push(line);
+    });
+
+    // 板块末尾的空行固定留在最后，避免任务调整顺序后空行跑到列表中间
+    const epilogue = [];
+    const lastGroup = baseBlocks.length > 0 ? attached[baseBlocks.length - 1] : preamble;
+    while (lastGroup.length > 0 && !lastGroup[lastGroup.length - 1].trim()) epilogue.unshift(lastGroup.pop());
+    // 板块原来只有空行（新日记模板）：标题和第一条任务之间保留一个空行
+    if (baseBlocks.length === 0 && preamble.length === 0 && epilogue.length > 1) preamble.push(epilogue.shift());
+
+    const generatedLines = generated ? generated.split('\n') : [];
+    const generatedBlocks = this.collectTodoBlocks(generatedLines);
+
+    // 按任务正文（第几次出现）配对新旧任务；勾选、高亮、拖动都不改变正文
+    const baseIndexByKey = new Map();
+    baseBlocks.forEach((block, index) => {
+      if (!baseIndexByKey.has(block.key)) baseIndexByKey.set(block.key, index);
+    });
+    const matchedBase = new Map();
+    generatedBlocks.forEach((block, index) => {
+      const baseIndex = baseIndexByKey.get(block.key);
+      if (baseIndex !== undefined) matchedBase.set(baseIndex, index);
+    });
+
+    // 旧任务已删除或改写：它下方的内容交给更前面仍然存在的任务，没有就放回开头
+    const extraAfterGenerated = generatedBlocks.map(() => []);
+    let lastMatched = -1;
+    baseBlocks.forEach((_block, baseIndex) => {
+      if (matchedBase.has(baseIndex)) {
+        lastMatched = matchedBase.get(baseIndex);
+        extraAfterGenerated[lastMatched].push(...attached[baseIndex]);
+      } else if (lastMatched === -1) {
+        preamble.push(...attached[baseIndex]);
+      } else {
+        extraAfterGenerated[lastMatched].push(...attached[baseIndex]);
+      }
+    });
+
+    const unit = MarkdownParser.detectIndentUnit(baseLines);
+    const output = [...preamble];
+    generatedBlocks.forEach((block, index) => {
+      for (let i = block.start; i <= block.end; i++) {
+        output.push(MarkdownParser.reindentLine(generatedLines[i], unit));
+      }
+      output.push(...extraAfterGenerated[index]);
+    });
+    // 生成内容里没有任务时（例如全部删除）也保留空行结构，但不叠加多余空行
+    if (generatedBlocks.length === 0 && output.length > 0 && epilogue.length > 0 && !output[output.length - 1].trim()) {
+      epilogue.shift();
+    }
+    output.push(...epilogue);
+    return output.join('\n');
+  }
+
+  /**
+   * 按文档顺序列出任务块（任务行 + 续行）的行号范围和用于配对的 key
+   * key = 任务正文 + 同一正文第几次出现，保证重复的任务也能一一对应
+   */
+  collectTodoBlocks(lines) {
+    const blocks = [];
+    const occurrences = new Map();
+    const visit = (todo) => {
+      const lineCount = String(todo.raw || '').split('\n').length;
+      const seen = occurrences.get(todo.text) || 0;
+      occurrences.set(todo.text, seen + 1);
+      blocks.push({ start: todo.line, end: todo.line + lineCount - 1, key: `${todo.text}\u0000${seen}` });
+      (todo.children || []).forEach(visit);
+    };
+    this.parseTodos(lines.join('\n')).forEach(visit);
+    return blocks.sort((a, b) => a.start - b.start);
+  }
+
+  /**
+   * 生成唯一 ID
+   * @returns {string} UUID v4
+   */
+  generateId() {
+    return crypto.randomUUID();
+  }
+
+  /**
+   * 归一化标题文本，忽略 # 数量和前后空白
+   * @param {string} title
+   * @returns {string}
+   */
+  normalizeTitle(title) {
+    return String(title || '')
+      .replace(/^#+/, '')
+      .trim();
+  }
+}
+
+// 导出供其他模块使用
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = MarkdownParser;
+}

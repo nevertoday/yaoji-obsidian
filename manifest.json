@@ -1,0 +1,10 @@
+{
+  "id": "yaoji-today",
+  "name": "今日待办",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Keeps today's to-dos in your daily note: creates the note, carries over what you didn't finish, adds a to-do from anywhere. Works on its own, no other plugins needed.",
+  "author": "小小东",
+  "authorUrl": "https://vip.xiaoxiaodong.ai/plugins/yaoji",
+  "isDesktopOnly": false
+}
