@@ -20,8 +20,8 @@ const MIME = {
   avif: 'image/avif', bmp: 'image/bmp', pdf: 'application/pdf', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'video/mp4'
 };
 
-// 路径里不能有 ..，也不碰 .obsidian（设置、插件、密钥都在那里）
-export function cleanVaultPath(raw) {
+// 路径里不能有 ..，也不碰库的设置文件夹（一般叫 .obsidian，设置、插件、密钥都在那里）和回收站
+export function cleanVaultPath(raw, configDir) {
   let decoded;
   try {
     decoded = String(raw || '').split('/').map((part) => decodeURIComponent(part)).join('/');
@@ -30,7 +30,8 @@ export function cleanVaultPath(raw) {
   }
   const parts = decoded.replace(/\\/g, '/').split('/').filter(Boolean);
   if (parts.some((part) => part === '..' || part === '.')) return null;
-  if (parts[0] === '.obsidian' || parts[0] === '.trash') return null;
+  const config = String(configDir || '').replace(/^\/+|\/+$/g, '');
+  if (!config || parts[0] === config || parts[0] === '.trash') return null;
   return parts.join('/');
 }
 
@@ -181,7 +182,7 @@ export class Bridge {
 
     if (path === '/vault' || path.startsWith('/vault/')) {
       const raw = path.slice('/vault'.length);
-      const vaultPath = cleanVaultPath(raw);
+      const vaultPath = cleanVaultPath(raw, this.app.vault.configDir);
       if (vaultPath === null) {
         this.send(res, 403, { error: 'forbidden_path' });
         return;

@@ -237,7 +237,7 @@ export function detectLanguage(obsidian = {}) {
   let raw = '';
   try { raw = typeof obsidian.getLanguage === 'function' ? obsidian.getLanguage() : ''; } catch { raw = ''; }
   if (!raw) {
-    try { raw = globalThis.localStorage?.getItem('language') || 'en'; } catch { raw = 'en'; }
+    try { raw = window.localStorage.getItem('language') || 'en'; } catch { raw = 'en'; }
   }
   return normalizeLanguage(raw);
 }

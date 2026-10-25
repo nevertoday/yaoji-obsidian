@@ -11,11 +11,13 @@ export async function resolve(specifier, context, next) {
 const { cleanVaultPath, hostAllowed, originAllowed } = await import('../src/bridge.js');
 
 test('路径：能解码中文，不许 .. 和 .obsidian', () => {
-  assert.equal(cleanVaultPath('/%E6%88%91/%E6%97%A5%E8%AE%B0/D-2026-10-25_%20%E5%91%A8%E6%97%A5.md'), '我/日记/D-2026-10-25_ 周日.md');
-  assert.equal(cleanVaultPath('/'), '');
-  assert.equal(cleanVaultPath('/a/../../etc/passwd'), null);
-  assert.equal(cleanVaultPath('/.obsidian/plugins/x/data.json'), null);
-  assert.equal(cleanVaultPath('/%E0%A4%A'), null);
+  assert.equal(cleanVaultPath('/%E6%88%91/%E6%97%A5%E8%AE%B0/D-2026-10-25_%20%E5%91%A8%E6%97%A5.md', '.obsidian'), '我/日记/D-2026-10-25_ 周日.md');
+  assert.equal(cleanVaultPath('/', '.obsidian'), '');
+  assert.equal(cleanVaultPath('/a/../../etc/passwd', '.obsidian'), null);
+  assert.equal(cleanVaultPath('/.obsidian/plugins/x/data.json', '.obsidian'), null);
+  assert.equal(cleanVaultPath('/.my-config/plugins/x/data.json', '.my-config'), null);
+  assert.equal(cleanVaultPath('/日记/a.md', ''), null);
+  assert.equal(cleanVaultPath('/%E0%A4%A', '.obsidian'), null);
 });
 
 test('只认扩展来的请求，网页不行；Host 只能是本机（防 DNS 重绑定）', () => {

@@ -123,7 +123,8 @@ class MarkdownParser {
   static escapeUserMarkers(text) {
     return String(text ?? '')
       // 空字符、强制改写文字方向的控制符（可以让一段字倒着显示、伪装成别的内容）不写进文件
-      .replace(/[\u0000\u202D\u202E]/g, '')
+      .split(String.fromCharCode(0)).join('')
+      .replace(/[\u202D\u202E]/g, '')
       .replace(/%%yaoji:/gi, (m) => `${m.slice(0, -1)}\u200B:`);
   }
 

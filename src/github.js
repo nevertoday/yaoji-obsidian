@@ -17,7 +17,7 @@ const CONNECT_WAIT_MS = 5 * 60 * 1000;
 const ACTED_LIMIT = 300;
 
 // 拷来的 github-issues.js 拼标题、正文时会找 TodoPlainText（去掉 Markdown 记号）
-globalThis.TodoPlainText = globalThis.TodoPlainText || TodoPlainText;
+window.TodoPlainText = window.TodoPlainText || TodoPlainText;
 
 export const ISSUE_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)(?![\w/])/g;
 
