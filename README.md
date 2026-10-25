@@ -40,7 +40,7 @@ Where daily notes live, the file name (a moment.js format, as in the daily notes
 On desktop the plugin listens on `127.0.0.1:27125`, a local address that only your own computer can reach, for the companion browser extension. Click “Connect” in the extension’s settings, then “Allow” in Obsidian. No Local REST API, API key or certificate is needed.
 
 - Only extensions you allowed can connect. Requests from web pages are refused.
-- It can read and write notes and attachments in the vault, never the vault’s configuration folder (settings and plugins) or the trash.
+- It can read and write notes and attachments in the vault, and nothing else: no hidden folders (the vault’s configuration folder with settings and plugins, `.git`, the trash) and no other file types such as scripts or web pages.
 - Connected browsers are listed in the plugin’s settings and can be disconnected at any time.
 
 On mobile this part is off; everything else works.
@@ -106,7 +106,7 @@ Source available, all rights reserved: free to install and use for personal use,
 电脑版 Obsidian 里，插件在 `127.0.0.1:27125` 开一个只有你这台电脑能连的接口，给浏览器扩展用。扩展设置里点「连接」，再在 Obsidian 里点「允许」就连上，不用装 Local REST API，也不用 API Key 和证书。
 
 - 只认你允许过的扩展；网页发来的请求一律拒绝。
-- 只能读写库里的笔记和附件，碰不到库的设置文件夹（设置、插件）和回收站。
+- 只能读写库里的笔记和附件：碰不到隐藏文件夹（库的设置文件夹里的设置和插件、`.git`、回收站），也不写脚本、网页这类文件。
 - 设置里能看到连着的浏览器，随时断开。
 
 手机上没有这一块，其他都能用。
