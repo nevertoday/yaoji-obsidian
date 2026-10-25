@@ -74,7 +74,7 @@ export class YaojiSettingTab extends PluginSettingTab {
 
     let preview = null;
     const showPreview = () => {
-      const path = normalizePath(notePath(settings, new Date(), (d, p) => moment(d).format(p)));
+      const path = normalizePath(notePath(settings, this.plugin.now(), (d, p) => moment(d).format(p)));
       preview?.setText(t('今天是 {path}', { path }));
     };
 

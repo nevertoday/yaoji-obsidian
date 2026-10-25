@@ -25,7 +25,7 @@ export class TodayView extends ItemView {
   getIcon() { return VIEW_ICON; }
 
   shownDate() {
-    return this.date || new Date();
+    return this.date || this.plugin.now();
   }
 
   async onOpen() {
@@ -81,7 +81,7 @@ export class TodayView extends ItemView {
   }
 
   goTo(date) {
-    this.date = date && dateKey(date) !== dateKey(new Date()) ? date : null;
+    this.date = date && dateKey(date) !== dateKey(this.plugin.now()) ? date : null;
     this.redraw();
   }
 
@@ -177,15 +177,17 @@ export class TodayView extends ItemView {
     const left = this.leftEl;
     left.empty();
     const note = this.plugin.leftOver;
-    const show = !this.date && note && note.dateKey === dateKey(new Date());
+    const show = !this.date && note && note.dateKey === dateKey(this.plugin.now());
     left.toggleClass('is-hidden', !show);
     if (!show) return;
     const message = note.onlyYesterday ? t('昨天剩 {count} 件，太多了没带', { count: '\u0000' }) : t('之前剩 {count} 件，太多了没带', { count: '\u0000' });
     const [before, after = ''] = message.split('\u0000');
     const link = left.createEl('button', { cls: 'yaoji-left-link' });
-    link.append(before);
-    link.createEl('b', { text: String(note.total) });
-    link.append(after);
+    // 按钮是 flex，字要包在一个 span 里，数字两边的空格才不会被吃掉
+    const label = link.createSpan();
+    label.append(before);
+    label.createEl('b', { text: String(note.total) });
+    label.append(after);
     link.addEventListener('click', () => this.goTo(note.date));
   }
 
