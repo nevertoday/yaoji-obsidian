@@ -180,3 +180,13 @@
   font-weight: var(--font-semibold);
   font-variant-numeric: tabular-nums;
 }
+
+/* 配对：一句话 + 允许 / 不允许 */
+.yaoji-pair-modal .modal-close-button {
+  display: none;
+}
+
+.yaoji-pair-text {
+  margin: 0 0 var(--size-4-4);
+  font-size: var(--font-ui-medium);
+}

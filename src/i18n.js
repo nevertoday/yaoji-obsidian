@@ -5,6 +5,31 @@
 export const LANGUAGES = ['zh', 'zh-TW', 'en', 'ja', 'ko', 'es', 'fr', 'de', 'pt', 'ru', 'ar', 'th', 'vi'];
 
 export const MESSAGES = {
+  '浏览器里的今日待办想连接「{vault}」': {
+    'zh-TW': '瀏覽器裡的今日待辦想連接「{vault}」', en: 'Today’s To-dos in your browser wants to connect to “{vault}”',
+    ja: 'ブラウザの「今日のToDo」が「{vault}」に接続しようとしています', ko: '브라우저의 Today’s To-dos가 “{vault}”에 연결하려고 해요',
+    es: 'Today’s To-dos de tu navegador quiere conectarse a «{vault}»', fr: 'Today’s To-dos dans votre navigateur veut se connecter à « {vault} »',
+    de: 'Today’s To-dos im Browser möchte sich mit „{vault}“ verbinden', pt: 'O Today’s To-dos do navegador quer se conectar a “{vault}”',
+    ru: 'Today’s To-dos в браузере хочет подключиться к «{vault}»', ar: 'يريد Today’s To-dos في المتصفح الاتصال بـ «{vault}»',
+    th: 'Today’s To-dos ในเบราว์เซอร์ต้องการเชื่อมต่อกับ “{vault}”', vi: 'Today’s To-dos trong trình duyệt muốn kết nối với “{vault}”'
+  },
+  '允许': {
+    'zh-TW': '允許', en: 'Allow', ja: '許可', ko: '허용', es: 'Permitir', fr: 'Autoriser', de: 'Erlauben',
+    pt: 'Permitir', ru: 'Разрешить', ar: 'السماح', th: 'อนุญาต', vi: 'Cho phép'
+  },
+  '不允许': {
+    'zh-TW': '不允許', en: 'Don’t allow', ja: '許可しない', ko: '허용 안 함', es: 'No permitir', fr: 'Refuser', de: 'Nicht erlauben',
+    pt: 'Não permitir', ru: 'Запретить', ar: 'عدم السماح', th: 'ไม่อนุญาต', vi: 'Không cho phép'
+  },
+  '连着的浏览器': {
+    'zh-TW': '連著的瀏覽器', en: 'Connected browser', ja: '接続中のブラウザ', ko: '연결된 브라우저', es: 'Navegador conectado',
+    fr: 'Navigateur connecté', de: 'Verbundener Browser', pt: 'Navegador conectado', ru: 'Подключённый браузер',
+    ar: 'متصفح متصل', th: 'เบราว์เซอร์ที่เชื่อมต่อ', vi: 'Trình duyệt đã kết nối'
+  },
+  '断开': {
+    'zh-TW': '斷開', en: 'Disconnect', ja: '切断', ko: '연결 해제', es: 'Desconectar', fr: 'Déconnecter', de: 'Trennen',
+    pt: 'Desconectar', ru: 'Отключить', ar: 'قطع الاتصال', th: 'ตัดการเชื่อมต่อ', vi: 'Ngắt kết nối'
+  },
   '今日待办': {
     'zh-TW': '今日待辦', en: 'Today’s To-dos', ja: '今日のToDo', ko: 'Today’s To-dos', es: 'Today’s To-dos', fr: 'Today’s To-dos',
     de: 'Today’s To-dos', pt: 'Today’s To-dos', ru: 'Today’s To-dos', ar: 'Today’s To-dos', th: 'Today’s To-dos', vi: 'Today’s To-dos'

@@ -12,7 +12,9 @@ export const DEFAULT_SETTINGS = {
   section: '### 事项',
   template: '',
   // 第一次打开时看过日记插件的设置了（只看一次）
-  adoptChecked: false
+  adoptChecked: false,
+  // 配对过的浏览器：[{ token, origin, name, at }]
+  browsers: []
 };
 
 // 标题要以 # 开头才找得到；只写了字就当三级标题
@@ -114,6 +116,18 @@ export class YaojiSettingTab extends PluginSettingTab {
         });
         return text;
       });
+
+    // 连上的浏览器：一个一行，能断开。一个都没有就不出现
+    for (const browser of Array.isArray(settings.browsers) ? settings.browsers : []) {
+      new Setting(containerEl)
+        .setName(t('连着的浏览器'))
+        .setDesc(`${browser.name || 'Chrome'} · ${new Date(browser.at || Date.now()).toLocaleDateString()}`)
+        .addButton((button) => button.setButtonText(t('断开')).onClick(async () => {
+          settings.browsers = settings.browsers.filter((entry) => entry.token !== browser.token);
+          await plugin.saveSettings();
+          this.display();
+        }));
+    }
 
     if (settings.template || diary?.template) {
       new Setting(containerEl)
