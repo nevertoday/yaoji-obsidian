@@ -7,6 +7,7 @@ import { detectLanguage, setLanguage, t } from './i18n.js';
 import { DEFAULT_SETTINGS, YaojiSettingTab, cleanSection, detectDiarySettings, sameAsDiary } from './settings.js';
 import { TodayView, VIEW_ICON, VIEW_TYPE } from './view.js';
 import { Bridge } from './bridge.js';
+import { hideBroughtMark } from './hide-mark.js';
 import { AUTH_ACTION, MEMBER_BASE, MemberClient } from './member.js';
 import { Github } from './github.js';
 import {
@@ -56,6 +57,8 @@ export default class YaojiTodayPlugin extends Plugin {
       }
     });
     this.registerView(VIEW_TYPE, (leaf) => new TodayView(leaf, this));
+    // 编辑器里藏起「今天带过了」那一行
+    this.registerEditorExtension(hideBroughtMark);
     this.addRibbonIcon(VIEW_ICON, t('今日待办'), () => this.showView());
 
     this.addCommand({ id: 'add', name: t('添加待办'), callback: () => new AddModal(this.app, (text) => this.addTodo(text)).open() });

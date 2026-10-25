@@ -41,6 +41,11 @@ export function hasBroughtMark(content) {
   return String(content || '').includes(BROUGHT_MARK);
 }
 
+// 只有「带过了」这一笔的那一行（编辑器里要藏起来的就是它）
+export function isBroughtLine(text) {
+  return String(text || '').trim() === BROUGHT_MARK;
+}
+
 // 日记里没有事项这一节就加在末尾；有就原样不动
 export function ensureSection(content, section, parser) {
   const text = String(content || '');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import moment from 'moment';
 import {
-  AUTO_LIMIT, BROUGHT_MARK, appendTodo, ensureSection, hasBroughtMark, isTemplatePending, mergeIntoToday,
+  AUTO_LIMIT, BROUGHT_MARK, appendTodo, ensureSection, hasBroughtMark, isBroughtLine, isTemplatePending, mergeIntoToday,
   newNoteContent, notePath, planCarry, removeBrought, sectionEndLine, splitPending, takePending, withBroughtMark
 } from '../src/today.js';
 
@@ -170,4 +170,12 @@ test('侧边栏删除：只删那一件，子任务跟着走，别的不动', ()
   assert.equal(deleteTodo(content, [0], '写周报', '### 事项', parser), '### 事项\n- [ ] 买菜\n');
   assert.equal(deleteTodo(content, [0, 0], '画图', '### 事项', parser), '### 事项\n- [ ] 写周报\n- [ ] 买菜\n');
   assert.equal(deleteTodo(content, [1], '不对', '### 事项', parser), null);
+});
+
+test('编辑器里只藏「带过了」那一行，别的提到它的字不藏', () => {
+  assert.equal(isBroughtLine(BROUGHT_MARK), true);
+  assert.equal(isBroughtLine(`  ${BROUGHT_MARK}  `), true);
+  assert.equal(isBroughtLine(`- [ ] 看看 ${BROUGHT_MARK}`), false);
+  assert.equal(isBroughtLine('%%yaoji:other%%'), false);
+  assert.equal(isBroughtLine(''), false);
 });
