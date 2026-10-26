@@ -4,7 +4,7 @@
 // 全按日记文件画：点方框、星标、删除都是改文件，文件一变（这里改的、在笔记里改的、手机同步来的）就重画。
 import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
-import { addDays, appendTodo, dateKey, deleteTodo, editTodo, readTodos } from './today.js';
+import { AUTO_LIMIT, addDays, appendTodo, dateKey, deleteTodo, editTodo, readTodos } from './today.js';
 import { ISSUE_URL_RE } from './github.js';
 import G from './vendor/github-issues.js';
 import { Solar } from 'lunar-javascript';
@@ -256,7 +256,11 @@ export class TodayView extends ItemView {
     const show = !this.date && note && note.dateKey === dateKey(this.plugin.now());
     left.toggleClass('is-hidden', !show);
     if (!show) return;
-    const message = note.onlyYesterday ? t('昨天剩 {count} 件，太多了没带', { count: '\u0000' }) : t('之前剩 {count} 件，太多了没带', { count: '\u0000' });
+    // 7 天以前留下的不多（不是「太多了」才没带）：只说剩几件
+    const tooMany = note.total > AUTO_LIMIT;
+    const message = !tooMany
+      ? t('之前剩 {count} 件', { count: '\u0000' })
+      : note.onlyYesterday ? t('昨天剩 {count} 件，太多了没带', { count: '\u0000' }) : t('之前剩 {count} 件，太多了没带', { count: '\u0000' });
     const [before, after = ''] = message.split('\u0000');
     const link = left.createEl('button', { cls: 'yaoji-left-link' });
     // 按钮是 flex，字要包在一个 span 里，数字两边的空格才不会被吃掉

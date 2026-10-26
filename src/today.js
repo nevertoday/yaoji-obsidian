@@ -6,6 +6,8 @@
 export const BROUGHT_MARK = '%%yaoji:brought%%';
 // 一次自动带的上限，和扩展一样（#17）：多了只说一句，不动
 export const AUTO_LIMIT = 20;
+// 自己带只看最近 7 天（和浏览器扩展同一条，扩展的 GitHub 问题 #30）：更早攒下的一大堆不算，免得挡着昨天新剩的几件
+export const AUTO_DAYS = 7;
 // 往前看多少天、连着多少天没有日记就停
 export const LOOK_BACK_DAYS = 45;
 export const MISSING_STREAK_LIMIT = 30;
@@ -159,6 +161,22 @@ export async function planCarry({ io, settings, today, formatDate, parser, maxDa
   }
   const total = days.reduce((sum, day) => sum + day.pending.length, 0);
   return { days, total, onlyYesterday: days.length === 1 && days[0].offset === 1 };
+}
+
+// 分成「自己带的」和「只说一句的」：最近 7 天剩的 20 件以内就带（canBring = 今天还没人带过）；
+// 更早的、或者最近的太多，都留在原来那几天，侧边栏底下说一句
+export function splitCarry(plan, { canBring = true } = {}) {
+  const sum = (days) => days.reduce((count, day) => count + day.pending.length, 0);
+  const pack = (days) => ({ days, total: sum(days), onlyYesterday: days.length === 1 && days[0].offset === 1 });
+  const recent = plan.days.filter((day) => day.offset <= AUTO_DAYS);
+  const recentTotal = sum(recent);
+  const bringable = recentTotal > 0 && recentTotal <= AUTO_LIMIT;
+  const leftDays = bringable ? plan.days.filter((day) => day.offset > AUTO_DAYS) : plan.days;
+  return {
+    bring: canBring && bringable ? pack(recent) : null,
+    left: sum(leftDays) ? pack(leftDays) : null,
+    recentTotal
+  };
 }
 
 // 撤销时从今天拿掉带来的那几条：按文字认，每条只拿一次，只拿还没勾掉的

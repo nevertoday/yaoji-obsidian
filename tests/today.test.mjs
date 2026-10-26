@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import moment from 'moment';
 import {
-  AUTO_LIMIT, BROUGHT_MARK, appendTodo, ensureSection, hasBroughtMark, isBroughtLine, isTemplatePending, mergeIntoToday,
+  AUTO_DAYS, AUTO_LIMIT, BROUGHT_MARK, splitCarry, appendTodo, ensureSection, hasBroughtMark, isBroughtLine, isTemplatePending, mergeIntoToday,
   newNoteContent, notePath, planCarry, removeBrought, sectionEndLine, splitPending, takePending, withBroughtMark
 } from '../src/today.js';
 
@@ -178,4 +178,34 @@ test('编辑器里只藏「带过了」那一行，别的提到它的字不藏',
   assert.equal(isBroughtLine(`- [ ] 看看 ${BROUGHT_MARK}`), false);
   assert.equal(isBroughtLine('%%yaoji:other%%'), false);
   assert.equal(isBroughtLine(''), false);
+});
+
+// 自己带只看最近 7 天（和扩展同一条，扩展 GitHub 问题 #30）
+test('一大堆是 7 天以前的：昨天剩的照样带，那一堆只说一句', async () => {
+  const many = Array.from({ length: 300 }, (_, i) => `- [ ] 旧事 ${i}`).join('\n');
+  const files = { '日记/2026-10-24.md': '### 事项\n- [ ] a\n- [ ] b\n', '日记/2026-09-25.md': `### 事项\n${many}\n` };
+  const plan = await planCarry({ io: memoryIO(files), settings, today, formatDate, parser });
+  assert.equal(AUTO_DAYS, 7);
+  const { bring, left, recentTotal } = splitCarry(plan);
+  assert.equal(recentTotal, 2);
+  assert.deepEqual(bring.days.map((day) => day.path), ['日记/2026-10-24.md']);
+  assert.equal(bring.total, 2);
+  assert.equal(bring.onlyYesterday, true);
+  assert.deepEqual(left.days.map((day) => day.path), ['日记/2026-09-25.md']);
+  assert.equal(left.total, 300);
+  // 今天已经有人带过：不再带，那一句照样只说那一堆
+  const marked = splitCarry(plan, { canBring: false });
+  assert.equal(marked.bring, null);
+  assert.equal(marked.left.total, 300);
+});
+
+test('最近 7 天剩的超过 20 件：不带，整个只说一句；什么都没剩：都是空', async () => {
+  const many = Array.from({ length: 21 }, (_, i) => `- [ ] 事 ${i}`).join('\n');
+  const plan = await planCarry({ io: memoryIO({ '日记/2026-10-23.md': `### 事项\n${many}\n` }), settings, today, formatDate, parser });
+  const { bring, left, recentTotal } = splitCarry(plan);
+  assert.equal(bring, null);
+  assert.equal(recentTotal, 21);
+  assert.equal(left.total, 21);
+  const empty = splitCarry({ days: [], total: 0, onlyYesterday: false });
+  assert.deepEqual(empty, { bring: null, left: null, recentTotal: 0 });
 });

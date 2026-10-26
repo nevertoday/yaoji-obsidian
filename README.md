@@ -5,7 +5,7 @@ Keeps today’s to-dos in today’s daily note.
 ![Today’s to-dos in the right sidebar, next to the daily note](docs/screenshot-en.png)
 
 - **Creates today’s note** when the day changes, or adds the to-do heading to the note your daily notes plugin or template just made. Nothing else in the note is touched.
-- **Carries over what you didn’t finish.** Up to 20 unfinished to-dos from earlier days come along automatically once a day, with undo. If there are more, it only tells you.
+- **Carries over what you didn’t finish.** Unfinished to-dos from the last 7 days come along automatically once a day (up to 20), with undo. Older ones, or more than 20, stay where they are and the sidebar only tells you.
 - **A “Today” panel in the right sidebar.** Type and press Enter to add, click the box to check, right-click to star or delete (with undo). Hover the date to page through days.
 - **Adds a to-do from anywhere** with the command “Add a to-do”, which you can bind to a hotkey.
 - **Needs no other plugins.** It works without Daily Notes, Periodic Notes, Templater or Local REST API. On first run it reuses your daily notes settings if you have them.
@@ -81,7 +81,7 @@ Source available, all rights reserved: free to install and use for personal use,
 ![侧边栏里的今天，旁边是日记](docs/screenshot-zh.png)
 
 - **自己建好今天的日记**：Obsidian 开着过了零点，或者第二天打开时，建好今天的日记，放好 `### 事项`。已经有日记（日记插件、模板刚建的）就只补这一节，别的不动。
-- **把没做完的带过来**：以前没做完的，20 件以内每天第一次自动带到今天，能撤销；多了只说一句。
+- **把没做完的带过来**：最近 7 天没做完的，20 件以内每天第一次自动带到今天，能撤销；更早的、或者多了，留在原来那几天，侧边栏底下只说一句。
 - **侧边栏里的今天**：右侧栏打开「今天」。顶上输入框，回车加一件；点方框勾掉，右键星标、删除（能撤销）；鼠标移到日期上可以翻前后一天。
 - **随时加一件事**：命令面板里「今日待办：添加待办」，可以绑快捷键。
 - **不依赖别的插件**：不用日记插件、Periodic Notes、Templater、Local REST API。第一次打开时如果你已经有日记设置，就直接沿用。

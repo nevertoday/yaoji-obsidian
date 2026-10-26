@@ -11,7 +11,7 @@ import { hideBroughtMark } from './hide-mark.js';
 import { AUTH_ACTION, MEMBER_BASE, MemberClient } from './member.js';
 import { Github } from './github.js';
 import {
-  AUTO_LIMIT, addDays, appendTodo, dateKey, editTodo, ensureSection, hasBroughtMark, isTemplatePending, mergeIntoToday,
+  AUTO_LIMIT, addDays, splitCarry, appendTodo, dateKey, editTodo, ensureSection, hasBroughtMark, isTemplatePending, mergeIntoToday,
   newNoteContent, notePath, planCarry, removeBrought, sectionEndLine, withBroughtMark
 } from './today.js';
 
@@ -210,12 +210,14 @@ export default class YaojiTodayPlugin extends Plugin {
       io: this.io(), settings: this.settings, today, parser: this.parser,
       formatDate: (d, p) => this.formatDate(d, p)
     });
-    // 太多没带：侧边栏底下那一句。今天已经带过（重开 Obsidian）也照样显示，只是不再提示
-    this.leftOver = plan.total > AUTO_LIMIT
-      ? { dateKey: dateKey(today), total: plan.total, onlyYesterday: plan.onlyYesterday, date: addDays(today, -plan.days[0].offset) }
+    const { bring, left, recentTotal } = splitCarry(plan, { canBring: !marked });
+    // 没带的：侧边栏底下那一句。今天已经带过（重开 Obsidian）也照样显示，只是不再提示
+    this.leftOver = left
+      ? { dateKey: dateKey(today), total: left.total, onlyYesterday: left.onlyYesterday, date: addDays(today, -left.days[0].offset) }
       : null;
     this.views().forEach((view) => view.drawLeft());
-    if (marked || !plan.total) return;
+    // 只剩 7 天以前的：侧边栏那一句就够了，不在今天记「带过了」，也不弹提示（每天弹一次是打扰）
+    if (marked || (!bring && recentTotal <= AUTO_LIMIT)) return;
 
     // 先在今天写下「带过了」，写下的那一方才带（另一台电脑、浏览器扩展看到就不带）
     let claimed = false;
@@ -226,12 +228,12 @@ export default class YaojiTodayPlugin extends Plugin {
     });
     if (!claimed) return;
 
-    if (plan.total > AUTO_LIMIT) {
-      const message = plan.onlyYesterday ? t('昨天剩 {count} 件，太多了没带', { count: plan.total }) : t('之前剩 {count} 件，太多了没带', { count: plan.total });
-      showNotice(message, [{ label: t('去看看'), run: () => this.openPath(plan.days[0].path) }], 10000);
+    if (!bring) {
+      const message = left.onlyYesterday ? t('昨天剩 {count} 件，太多了没带', { count: left.total }) : t('之前剩 {count} 件，太多了没带', { count: left.total });
+      showNotice(message, [{ label: t('去看看'), run: () => this.openPath(left.days[0].path) }], 10000);
       return;
     }
-    await this.applyCarry(file, plan);
+    await this.applyCarry(file, bring);
   }
 
   // 带过来：先写今天，再从以前的日记拿走（和扩展同样的顺序：中途出错也只会多一份，不会丢）

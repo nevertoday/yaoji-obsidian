@@ -139,6 +139,14 @@ export const MESSAGES = {
     ru: 'Со вчера осталось {count} — слишком много, не перенесено', ar: 'تبقّى {count} من أمس — كثيرة جدًا فلم تُنقل',
     th: 'เหลือจากเมื่อวาน {count} รายการ มากเกินไปจึงไม่ได้ยกมา', vi: 'Còn {count} việc từ hôm qua — quá nhiều nên chưa mang sang'
   },
+  '之前剩 {count} 件': {
+    'zh-TW': '之前剩 {count} 件', en: '{count} left from earlier days',
+    ja: '以前の残り {count} 件', ko: '이전에 남은 일 {count}개',
+    es: 'Quedan {count} de días anteriores', fr: '{count} restants des jours précédents',
+    de: '{count} von früheren Tagen offen', pt: 'Sobraram {count} de dias anteriores',
+    ru: 'С прошлых дней осталось {count}', ar: 'تبقّى {count} من أيام سابقة',
+    th: 'เหลือจากวันก่อน ๆ {count} รายการ', vi: 'Còn {count} việc từ những ngày trước'
+  },
   '之前剩 {count} 件，太多了没带': {
     'zh-TW': '之前剩 {count} 件，太多了沒帶', en: '{count} left from earlier days — too many to bring over',
     ja: '以前の残り {count} 件。多すぎるので持ってきていません', ko: '이전에 남은 일 {count}개 — 너무 많아서 가져오지 않았어요',
