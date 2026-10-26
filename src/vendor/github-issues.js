@@ -39,6 +39,11 @@
     return out;
   }
 
+  // 这段文字里有没有这个问题地址：整个地址对上才算（#1 不算在 #12 里；Obsidian 插件对抗测试时发现）
+  function hasIssueUrl(text, url) {
+    return Boolean(url) && findIssueUrls(text).some((issue) => issue.url === url);
+  }
+
   // 项目颜色：用户点色块换过的用他选的；没换过的按名字算一个，同一个项目在哪台电脑上都是同一个颜色
   function repoColor(fullName, chosen = {}) {
     const picked = Number(chosen?.[fullName]);
@@ -461,7 +466,7 @@
   // 发完以后：问题地址接在任务第一行后面（存的是裸网址，显示时缩成带项目颜色的 #42）
   function appendIssueUrl(text, url) {
     const raw = String(text || '');
-    if (!url || raw.includes(url)) return raw;
+    if (!url || hasIssueUrl(raw, url)) return raw;
     const lines = raw.split('\n');
     const index = Math.max(0, lines.findIndex((line) => line.trim()));
     lines[index] = `${lines[index].replace(/[ \t]+$/, '')}${lines[index].trim() ? ' ' : ''}${url}`;
@@ -470,10 +475,20 @@
 
   // 问题搬走了（GitHub 上转移、或者「改发到」）：任务里的老地址换成新的（GitHub 问题 #15）
   function replaceIssueUrl(text, from, to) {
+    if (!from || !to || from === to) return String(text || '');
+    return replaceIssueUrls(text, [{ from, to }]);
+  }
+
+  // 几个问题一起搬（#1→#2、#2→#1 这样对换也行）：一遍扫过去，每个地址只按原来的样子换一次，换上去的不会再被换走；
+  // 只认整个问题地址（#1 不碰 #12）。moves：[{ from, to }] 或 Map（老地址 → 新地址）
+  function replaceIssueUrls(text, moves) {
     const raw = String(text || '');
-    if (!from || !to || from === to) return raw;
-    const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return raw.replace(new RegExp(`${escaped}(?![\\w/])`, 'g'), to);
+    const map = moves instanceof Map ? moves : new Map((Array.isArray(moves) ? moves : []).map((move) => [move?.from, move?.to]));
+    if (!map.size) return raw;
+    return raw.replace(ISSUE_URL_RE, (whole) => {
+      const to = map.get(whole);
+      return to && typeof to === 'string' ? to : whole;
+    });
   }
 
   // 会员站说哪些问题搬走了（movedTo）：[{ from: 老地址, to: { repo, number, url } }]；
@@ -496,9 +511,10 @@
       const { movedTo, ...rest } = item;
       return { ...rest, repo: to.repo, number: to.number };
     });
+    const urls = new Map(moves.map((move) => [move.from, move.to.url]));
     const nextEntries = (Array.isArray(entries) ? entries : []).map((entry) => {
       const to = byKey.get(entry.url);
-      return to ? { ...entry, repo: to.repo, number: to.number, url: to.url, text: replaceIssueUrl(entry.text, entry.url, to.url) } : entry;
+      return to ? { ...entry, repo: to.repo, number: to.number, url: to.url, text: replaceIssueUrls(entry.text, urls) } : entry;
     });
     return { moves, entries: nextEntries, states: nextStates };
   }
@@ -699,7 +715,9 @@
     buildDraft,
     footer,
     appendIssueUrl,
+    hasIssueUrl,
     replaceIssueUrl,
+    replaceIssueUrls,
     applyMoves,
     openIssueTodos,
     issuesToAsk,

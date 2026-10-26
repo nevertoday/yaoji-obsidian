@@ -12,7 +12,7 @@ import { AUTH_ACTION, MEMBER_BASE, MemberClient } from './member.js';
 import { Github } from './github.js';
 import {
   AUTO_LIMIT, addDays, splitCarry, appendTodo, dateKey, editTodo, ensureSection, hasBroughtMark, isTemplatePending, mergeIntoToday,
-  newNoteContent, notePath, planCarry, removeBrought, sectionEndLine, withBroughtMark
+  newNoteContent, notePath, planCarry, sectionEndLine, undoBrought, withBroughtMark
 } from './today.js';
 
 const { Modal, Notice, Plugin, TFile, moment, normalizePath } = obsidian;
@@ -30,6 +30,8 @@ export default class YaojiTodayPlugin extends Plugin {
     setLanguage(detectLanguage(obsidian));
     this.parser = new MarkdownParser();
     this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+    // data.json 里手写的「事项」（没有 #）找不到标题，每次都会在日记末尾多加一行：读进来就补成标题
+    this.settings.section = cleanSection(this.settings.section);
     this.handledKey = '';
     this.running = null;
     // 今天自动带时太多没带：侧边栏底下那一句用
@@ -104,8 +106,11 @@ export default class YaojiTodayPlugin extends Plugin {
     return new Date(m.year(), m.month(), m.date(), m.hours(), m.minutes(), m.seconds());
   }
 
+  // date 是 now() 那样「读出来就是那个时间」的 Date：按年月日时分秒交给 moment，不再按电脑时区换算一遍
+  // （Obsidian 的时区和电脑不一样时，换两遍会差一天）
   formatDate(date, pattern) {
-    return moment(date).format(pattern);
+    const d = new Date(date);
+    return moment([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()]).format(pattern);
   }
 
   pathFor(date) {
@@ -193,6 +198,9 @@ export default class YaojiTodayPlugin extends Plugin {
     }
 
     const current = await vault.read(file);
+    // 等过了还没渲染完（比如 Templater 在问「今天心情」）：这次什么都不写，过一分钟再看。
+    // 现在写进去的（带来的待办）会被 Templater 渲染完整篇覆盖掉，而以前那几天已经拿走了
+    if (isTemplatePending(current)) return file;
     if (ensureSection(current, section, this.parser) !== current) {
       await vault.process(file, (text) => ensureSection(text, section, this.parser));
     }
@@ -240,17 +248,28 @@ export default class YaojiTodayPlugin extends Plugin {
   async applyCarry(file, plan) {
     const { vault } = this.app;
     const section = this.settings.section;
-    const moved = plan.days.flatMap((day) => day.pending.map((todo) => this.cloneTodo(todo)));
+    // 和今天是同一个文件的（周记这种）不算以前的，不从里面拿
+    const days = plan.days.filter((day) => this.fileAt(day.path) !== file);
+    if (!days.length) return;
+    const moved = days.flatMap((day) => day.pending.map((todo) => this.cloneTodo(todo)));
     let todayBefore = '';
     let todayAfter = '';
+    let record = [];
+    let pending = false;
     await vault.process(file, (text) => {
       todayBefore = text;
-      todayAfter = mergeIntoToday(text, moved, section, this.parser).content;
+      todayAfter = text;
+      // Templater 还没渲染完：写进去也会被它覆盖，以前那几天也别动
+      if (isTemplatePending(text)) { pending = true; return text; }
+      const merged = mergeIntoToday(text, moved, section, this.parser);
+      todayAfter = merged.content;
+      record = merged.record;
       return todayAfter;
     });
+    if (pending) throw new Error('Templater');
 
     const touched = [];
-    for (const day of plan.days) {
+    for (const day of days) {
       const source = this.fileAt(day.path);
       if (!source) continue;
       let changed = false;
@@ -263,15 +282,18 @@ export default class YaojiTodayPlugin extends Plugin {
       if (changed) touched.push(day);
     }
 
-    const count = plan.total;
-    const message = plan.onlyYesterday ? t('带来了昨天的 {count} 件', { count }) : t('带来了之前的 {count} 件', { count });
+    // 今天没变、以前那几天也一篇没动：什么都没带成，不说「带来了」
+    if (todayAfter === todayBefore && !touched.length) return;
+    const count = days.reduce((sum, day) => sum + day.pending.length, 0);
+    const onlyYesterday = days.length === 1 && days[0].offset === 1;
+    const message = onlyYesterday ? t('带来了昨天的 {count} 件', { count }) : t('带来了之前的 {count} 件', { count });
     showNotice(message, [{
       label: t('撤销'),
-      run: () => this.undoCarry({ file, todayBefore, todayAfter, moved, touched })
+      run: () => this.undoCarry({ file, todayBefore, todayAfter, record, touched })
     }], 8000);
   }
 
-  async undoCarry({ file, todayBefore, todayAfter, moved, touched }) {
+  async undoCarry({ file, todayBefore, todayAfter, record, touched }) {
     const { vault } = this.app;
     let partial = false;
     for (const day of touched) {
@@ -283,9 +305,13 @@ export default class YaojiTodayPlugin extends Plugin {
         return text;
       });
     }
-    await vault.process(file, (text) => (
-      text === todayAfter ? todayBefore : removeBrought(text, moved, this.settings.section, this.parser)
-    ));
+    // 今天这期间又改过：只拿掉真带来的、没动过的那几条（今天本来就有的同名待办、用户新加的子任务都留着）
+    await vault.process(file, (text) => {
+      if (text === todayAfter) return todayBefore;
+      const undone = undoBrought(text, record, this.settings.section, this.parser);
+      if (undone.partial) partial = true;
+      return undone.content;
+    });
     showNotice(partial ? t('有的日记这期间改过，那部分没撤回') : t('撤回了'), [], 4000);
   }
 
@@ -323,7 +349,13 @@ export default class YaojiTodayPlugin extends Plugin {
     const file = dateKey(date) === dateKey(this.now())
       ? await this.ensureToday({ carry: true })
       : await this.noteFor(date);
-    await this.app.vault.process(file, (content) => appendTodo(content, text, this.settings.section, this.parser));
+    // Templater 还没渲染完：现在加的会被它覆盖掉，不写，告诉用户
+    let pending = false;
+    await this.app.vault.process(file, (content) => {
+      if (isTemplatePending(content)) { pending = true; return content; }
+      return appendTodo(content, text, this.settings.section, this.parser);
+    });
+    if (pending) throw new Error('Templater');
   }
 
   async noteFor(date) {

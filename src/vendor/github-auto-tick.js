@@ -1,7 +1,9 @@
 // GitHub 上问题关了 → 日记里打勾（新标签页、侧边栏、后台共用；GitHub 问题 #8 方案 A）
 //
 // - diaryEntries：今天和最近 14 天的日记里，没打勾、带着问题地址的事 [{ filePath, dateKey, url, repo, number, text }]
-// - setChecked：在那篇日记里把带着这个地址的那件事勾上 / 改回未完成（读出来、改一个勾、整段写回，和「带到今天」同一种写法）
+// - setChecked：在那篇日记里把带着这个地址的那件事勾上 / 改回未完成（读出来、改一个勾、整段写回，和「带到今天」同一种写法）；
+//   真写进去了才返回 true
+// - replaceUrl / replaceUrls：问题搬走了，老地址换成新地址
 // - barkItem：推到手机的那一条（标题说结果，正文是那件事的字）
 // 页面上今天这一篇还是走 TodoManager（要有打勾的样子、能撤销）；后台没有页面，直接改日记文件。
 (function initGithubAutoTick(globalScope) {
@@ -80,15 +82,24 @@
     return entries;
   }
 
+  // 写回去：updateFileContent 明说没写（返回 false：读出来以后文件又被改过）就当没改成，不算打了勾；
+  // 扩展那边冲突时直接抛错，返回值是对象或 undefined，照旧算写了
+  async function writeBack(tools, filePath, content, todos) {
+    const next = tools.parser.replaceSection(content, tools.title, tools.parser.todosToMarkdown(todos));
+    const wrote = await tools.api.updateFileContent(filePath, next, { expectedContent: content });
+    return wrote !== false;
+  }
+
   async function setChecked(tools, filePath, url, checked) {
-    if (!tools?.api || !tools.parser || !tools.title) return false;
+    if (!tools?.api || !tools.parser || !tools.title || !G() || !url) return false;
     const content = await tools.api.getFileContent(filePath);
     const section = tools.parser.extractSection(content, tools.title);
     if (!section) return false;
     const todos = tools.parser.parseTodos(section.content);
     let hit = null;
+    // 整个问题地址对上才算：关了 #1 不会勾到带着 #12 的那件
     const walk = (items) => (items || []).some((todo) => {
-      if (Boolean(todo?.checked) !== checked && String(todo?.text || '').includes(url)) {
+      if (Boolean(todo?.checked) !== checked && G().hasIssueUrl(todo?.text, url)) {
         hit = todo;
         return true;
       }
@@ -97,13 +108,18 @@
     walk(todos);
     if (!hit) return false;
     hit.checked = checked;
-    const next = tools.parser.replaceSection(content, tools.title, tools.parser.todosToMarkdown(todos));
-    await tools.api.updateFileContent(filePath, next, { expectedContent: content });
-    return true;
+    return writeBack(tools, filePath, content, todos);
   }
 
   // 问题搬走了（GitHub 问题 #15）：那篇日记里带着老地址的事换成新地址（整段写回，和打勾同一种写法）
   async function replaceUrl(tools, filePath, from, to) {
+    if (!from || !to || from === to) return false;
+    return replaceUrls(tools, filePath, [{ from, to }]);
+  }
+
+  // 一篇日记里几个问题一起搬：每件事从原来的地址一次换好（#1→#2、#2→#1 对换不会换乱），整篇只写一次
+  // moves：[{ from, to }] 或 Map（老地址 → 新地址）
+  async function replaceUrls(tools, filePath, moves) {
     if (!tools?.api || !tools.parser || !tools.title || !G()) return false;
     const content = await tools.api.getFileContent(filePath);
     const section = tools.parser.extractSection(content, tools.title);
@@ -111,8 +127,8 @@
     const todos = tools.parser.parseTodos(section.content);
     let changed = false;
     const walk = (items) => (items || []).forEach((todo) => {
-      const next = G().replaceIssueUrl(todo?.text, from, to);
-      if (todo && next !== todo.text) {
+      const next = G().replaceIssueUrls(todo?.text, moves);
+      if (todo && next !== String(todo.text || '')) {
         todo.text = next;
         changed = true;
       }
@@ -120,9 +136,7 @@
     });
     walk(todos);
     if (!changed) return false;
-    const next = tools.parser.replaceSection(content, tools.title, tools.parser.todosToMarkdown(todos));
-    await tools.api.updateFileContent(filePath, next, { expectedContent: content });
-    return true;
+    return writeBack(tools, filePath, content, todos);
   }
 
   // 那件事给人看的一行：去掉问题地址、附件、Markdown 记号
@@ -130,7 +144,8 @@
     const lines = String(text || '').split('\n');
     const plain = (line) => {
       const converted = globalScope.TodoPlainText?.convertText ? globalScope.TodoPlainText.convertText(line).text : String(line || '');
-      return converted.replace(/https:\/\/github\.com\/[^\s]+\/issues\/\d+/g, '').replace(/!?\[\[[^\]]*\]\]/g, '').replace(/\s+/g, ' ').trim();
+      // 项目名、附件名都有上限：很长一段没有收尾的字也是一遍扫完，不会越扫越慢
+      return converted.replace(/https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\/\d+/g, '').replace(/!?\[\[[^\]]{0,500}\]\]/g, '').replace(/\s+/g, ' ').trim();
     };
     return (lines.map(plain).find(Boolean) || '').slice(0, 120);
   }
@@ -145,7 +160,7 @@
     };
   }
 
-  const api = { diaryEntries, diaryIssues, setChecked, replaceUrl, barkItem, plainText, keyOfDay, PAST_DAYS };
+  const api = { diaryEntries, diaryIssues, setChecked, replaceUrl, replaceUrls, barkItem, plainText, keyOfDay, PAST_DAYS };
   globalScope.GithubAutoTick = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

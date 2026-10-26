@@ -18,8 +18,32 @@ class MarkdownParser {
   // 浏览器扩展和 Obsidian 里的今日待办插件都开着、或者两台电脑都开着时，谁先写下它谁带，另一边看到就不再带（GitHub 问题 #19）
   static BROUGHT_MARK = '%%yaoji:brought%%';
 
-  // 任务行：- [ ] / * [ ] / + [ ]，允许空格或 Tab 缩进
-  static TODO_LINE = /^([ \t]*)([-*+]) \[([ xX])\]\s*(.*)$/;
+  // 任务行：- [ ] / * [ ] / + [ ]，允许空格或 Tab 缩进；行尾的 \r（Windows 换行）不算字
+  static TODO_LINE = /^([ \t]*)([-*+]) \[([ xX])\]\s*(.*?)\r?$/;
+
+  /**
+   * 哪些行在代码块（``` 或 ~~~ 围起来）里：代码块里的「# 注释」不是标题、「- [ ] 示例」不是任务。
+   * 缩进写在任务下面的代码块，遇到缩进更浅的行就算结束（这件事结束了）；一直没合上的不算代码块，照旧读。
+   */
+  static fencedLines(lines) {
+    const inside = new Array(lines.length).fill(false);
+    let open = null;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const match = /^([ \t]*)(`{3,}|~{3,})([^\n]*)$/.exec(line);
+      if (open && line.trim() && MarkdownParser.indentWidth(line.match(/^[ \t]*/)[0]) < open.width) open = null;
+      if (open) {
+        inside[i] = true;
+        if (match && match[2][0] === open.fence[0] && match[2].length >= open.fence.length && !match[3].trim()) open = null;
+        continue;
+      }
+      if (!match || (match[2][0] === '`' && match[3].includes('`'))) continue;
+      open = { fence: match[2], width: MarkdownParser.indentWidth(match[1]), start: i };
+      inside[i] = true;
+    }
+    if (open) for (let i = open.start; i < lines.length; i++) inside[i] = false;
+    return inside;
+  }
 
   /** 缩进宽度，Tab 按 4 个空格计 */
   static indentWidth(whitespace) {
@@ -38,10 +62,13 @@ class MarkdownParser {
     return minSpaces === 2 ? '  ' : '    ';
   }
 
-  /** todosToMarkdown 统一按 4 空格一级输出，这里换成原文件的缩进单位 */
-  static reindentLine(line, unit) {
+  /**
+   * todosToMarkdown 统一按 4 空格一级输出，这里换成原文件的缩进单位。
+   * upTo：续行只换任务本身那几级，再往里的缩进（嵌套列表、代码）原样留着（Tab 文件照旧整段换）
+   */
+  static reindentLine(line, unit, upTo = Infinity) {
     if (unit === '    ') return line;
-    const leading = line.match(/^ */)[0].length;
+    const leading = Math.min(line.match(/^ */)[0].length, unit === '\t' ? Infinity : upTo);
     const levels = Math.floor(leading / 4);
     return unit.repeat(levels) + ' '.repeat(leading % 4) + line.slice(leading);
   }
@@ -58,24 +85,33 @@ class MarkdownParser {
     let endLine = lines.length;
     let sectionLevel = 0;
     const targetTitle = this.normalizeTitle(sectionTitle);
+    const targetLevel = this.getHeaderLevel(String(sectionTitle || '').trim());
+    // 代码块里的 # 不是标题；文件开头的 BOM 不算字
+    const fenced = MarkdownParser.fencedLines(lines);
+    const lineAt = (i) => (i === 0 ? lines[0].replace(/^\uFEFF/, '') : lines[i]);
 
-    // 查找板块开始位置
+    // 查找板块开始位置：同级的标题优先（「# 事项」这种大标题会吞掉整篇）；没有同级的才认别的级别（以前就这样认）
+    let fallback = -1;
     for (let i = 0; i < lines.length; i++) {
-      const headerLevel = this.getHeaderLevel(lines[i]);
-      const line = lines[i].trim();
-      if (headerLevel > 0 && this.normalizeTitle(line) === targetTitle) {
+      if (fenced[i]) continue;
+      const headerLevel = this.getHeaderLevel(lineAt(i));
+      if (headerLevel === 0 || this.normalizeTitle(lineAt(i)) !== targetTitle) continue;
+      if (!targetLevel || headerLevel === targetLevel) {
         startLine = i;
-        sectionLevel = headerLevel;
         break;
       }
+      if (fallback === -1) fallback = i;
     }
+    if (startLine === -1) startLine = fallback;
 
     if (startLine === -1) {
       return null; // 未找到指定板块
     }
+    sectionLevel = this.getHeaderLevel(lineAt(startLine));
 
     // 查找板块结束位置(下一个同级或更高级标题)
     for (let i = startLine + 1; i < lines.length; i++) {
+      if (fenced[i]) continue;
       const currentLevel = this.getHeaderLevel(lines[i]);
       if (currentLevel > 0 && currentLevel <= sectionLevel) {
         endLine = i;
@@ -148,7 +184,8 @@ class MarkdownParser {
 
     const markerTailRegex = /\s*%%yaoji:([a-z0-9-]+)(?::([^%]*))?%%\s*$/i;
 
-    while (true) {
+    // 不是 %% 结尾就不用找（很长一串空格时正则会很慢）
+    while (text.endsWith('%%')) {
       const match = markerTailRegex.exec(text);
       if (!match) break;
 
@@ -201,16 +238,16 @@ class MarkdownParser {
    * 用户自己连着加的两条同样的任务不会被动到。
    */
   static collapseRepeatedBlocks(lines) {
+    // 旧 bug 是在缩进的标题处把这一节截断，被重复写进去的那一段总是从这一行开始：
+    // 只看从缩进标题开始的段，用户自己连着写的两条一样的多行任务（任务行开头）不会被收掉
     const indentedHeading = /^[ \t]+#{1,6}\s/;
     if (!lines.some((line) => indentedHeading.test(line))) return lines;
     const out = lines.slice();
     const same = (a, b, k) => { for (let j = 0; j < k; j++) if (out[a + j] !== out[b + j]) return false; return true; };
     for (let i = 0; i < out.length; i++) {
+      if (!indentedHeading.test(out[i])) continue;
       for (let k = 2; k <= Math.min(400, Math.floor((out.length - i) / 2)); k++) {
         if (!same(i, i + k, k)) continue;
-        let hasHeading = false;
-        for (let j = 0; j < k; j++) if (indentedHeading.test(out[i + j])) { hasHeading = true; break; }
-        if (!hasHeading) continue;
         while (i + 2 * k <= out.length && same(i, i + k, k)) out.splice(i + k, k);
         break;
       }
@@ -219,11 +256,19 @@ class MarkdownParser {
   }
 
   parseTodos(sectionContent) {
-    const lines = MarkdownParser.collapseRepeatedBlocks(String(sectionContent ?? '').split('\n'));
+    // Windows 换行：\r 不算字（写回时 replaceSection 会换回 \r\n）
+    const lines = MarkdownParser.collapseRepeatedBlocks(String(sectionContent ?? '').replace(/\r\n/g, '\n').split('\n'));
+    return this.parseLines(lines);
+  }
+
+  // parseTodos 的本体：不再收重复段，line 就是 lines 里的行号
+  parseLines(lines) {
     const todos = [];
     const stack = []; // [{ todo, width }]，width 是该任务行的缩进宽度
+    const fenced = MarkdownParser.fencedLines(lines);
 
     for (let i = 0; i < lines.length; i++) {
+      if (fenced[i]) continue;
       const todoMatch = lines[i].match(MarkdownParser.TODO_LINE);
       if (!todoMatch) continue;
 
@@ -234,25 +279,34 @@ class MarkdownParser {
 
       // 解析持久化标记（从显示文本中剥离，但保留状态）
       const { text: trimmedText, meta } = this.stripMetaMarkers(text);
-      const highlightMatch = trimmedText.match(/^==(.+)==$/);
+      // 整条是一段高亮才算星标；「==a== 和 ==b==」是两段，不算（不然取消星标会吃掉中间的 ==）。
+      // 给这种字加星标写成「====a== 和 ==b====」，读回来还是星标，取消后原样
+      const highlightMatch = trimmedText.match(/^==(==.*==|(?:(?!==).)+)==$/);
       let normalizedText = highlightMatch ? highlightMatch[1].trim() : trimmedText;
       let highlighted = !!highlightMatch;
 
-      // 多行任务：紧跟其后、缩进比任务行更深的非任务行是任务正文的续行
+      // 多行任务：紧跟其后、缩进比任务行更深的非任务行是任务正文的续行（代码块里像任务的行也是续行）
       const continuationLines = [];
+      const continuationWidths = [];
       let endLineIndex = i;
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j];
-        if (MarkdownParser.TODO_LINE.test(next)) break;
+        if (!fenced[j] && MarkdownParser.TODO_LINE.test(next)) break;
         const contMatch = next.match(/^([ \t]+)(.*)$/);
         if (!contMatch || MarkdownParser.indentWidth(contMatch[1]) <= width) break;
         continuationLines.push(contMatch[2]);
+        continuationWidths.push(contMatch[2].trim() ? MarkdownParser.indentWidth(contMatch[1]) : -1);
         endLineIndex = j;
       }
+      // 续行里更深的缩进（嵌套列表、代码）：显示时不带，写回时按原来的层次补上
+      let contIndent = null;
       if (continuationLines.length > 0) {
         normalizedText = [normalizedText, ...continuationLines].join('\n');
         // Obsidian 中跨行的 == == 高亮表现不稳定，这里仅对单行任务启用
         highlighted = false;
+        const base = Math.min(...continuationWidths.filter((w) => w >= 0));
+        const extra = continuationWidths.map((w) => (w >= 0 ? w - base : 0));
+        if (extra.some((n) => n > 0)) contIndent = extra;
       }
 
       const todo = {
@@ -269,6 +323,7 @@ class MarkdownParser {
         raw: lines.slice(i, endLineIndex + 1).join('\n')
       };
       if (bullet !== '-') todo.bullet = bullet;
+      if (contIndent) todo.contIndent = contIndent;
 
       if (indent === 0) todos.push(todo);
       else stack[stack.length - 1].todo.children.push(todo);
@@ -302,8 +357,10 @@ class MarkdownParser {
         firstContent = `${firstContent} ${metaMarkers}`.trimEnd();
       }
       lines.push(`${indent}${todo.bullet || '-'} [${checkMark}] ${firstContent}`);
+      // 续行原来更深的缩进（行数对得上才用）
+      const extra = Array.isArray(todo.contIndent) && todo.contIndent.length === textLines.length - 1 ? todo.contIndent : null;
       for (let i = 1; i < textLines.length; i++) {
-        lines.push(`${indent}    ${textLines[i] || ''}`);
+        lines.push(`${indent}    ${' '.repeat(extra?.[i - 1] || 0)}${textLines[i] || ''}`);
       }
 
       // 递归处理子任务
@@ -325,6 +382,11 @@ class MarkdownParser {
    * @returns {string} 更新后的完整 Markdown
    */
   replaceSection(originalMarkdown, sectionTitle, newSectionContent) {
+    // 整篇都是 Windows 换行（\r\n）：按 \n 改，写回时换回 \r\n，不混着写
+    const raw = String(originalMarkdown ?? '');
+    if (raw.includes('\r\n') && !/(^|[^\r])\n/.test(raw)) {
+      return this.replaceSection(raw.replace(/\r\n/g, '\n'), sectionTitle, newSectionContent).replace(/\n/g, '\r\n');
+    }
     const section = this.extractSection(originalMarkdown, sectionTitle);
 
     if (!section) {
@@ -353,7 +415,8 @@ class MarkdownParser {
     const generated = String(generatedContent ?? '');
     if (!base) return generated;
 
-    const baseLines = base.split('\n');
+    // 和 parseTodos 读到的一样先收起旧 bug 的重复段，行号才对得上（不然会多写、少写几行）
+    const baseLines = MarkdownParser.collapseRepeatedBlocks(base.split('\n'));
     const baseBlocks = this.collectTodoBlocks(baseLines);
     const covered = new Set();
     baseBlocks.forEach((block) => {
@@ -412,8 +475,9 @@ class MarkdownParser {
     const unit = MarkdownParser.detectIndentUnit(baseLines);
     const output = [...preamble];
     generatedBlocks.forEach((block, index) => {
+      const taskLeading = generatedLines[block.start].match(/^ */)[0].length;
       for (let i = block.start; i <= block.end; i++) {
-        output.push(MarkdownParser.reindentLine(generatedLines[i], unit));
+        output.push(MarkdownParser.reindentLine(generatedLines[i], unit, i === block.start ? Infinity : taskLeading + 4));
       }
       output.push(...extraAfterGenerated[index]);
     });
@@ -439,7 +503,7 @@ class MarkdownParser {
       blocks.push({ start: todo.line, end: todo.line + lineCount - 1, key: `${todo.text}\u0000${seen}` });
       (todo.children || []).forEach(visit);
     };
-    this.parseTodos(lines.join('\n')).forEach(visit);
+    this.parseLines(lines).forEach(visit);
     return blocks.sort((a, b) => a.start - b.start);
   }
 
@@ -462,7 +526,8 @@ class MarkdownParser {
     const section = this.extractSection(text, sectionTitle);
     if (!section) return `${text.replace(/\s+$/, '')}${text.trim() ? '\n\n' : ''}${sectionTitle}\n${MarkdownParser.BROUGHT_MARK}\n`;
     const lines = text.split('\n');
-    lines.splice(section.startLine + 1, 0, MarkdownParser.BROUGHT_MARK);
+    // Windows 换行的文件里这一行也带 \r
+    lines.splice(section.startLine + 1, 0, MarkdownParser.BROUGHT_MARK + (lines[section.startLine].endsWith('\r') ? '\r' : ''));
     return lines.join('\n');
   }
 
@@ -473,7 +538,10 @@ class MarkdownParser {
    */
   normalizeTitle(title) {
     return String(title || '')
+      .trim()
       .replace(/^#+/, '')
+      // 「### 事项 ###」后面收尾的 # 不算标题的字
+      .replace(/\s+#+$/, '')
       .trim();
   }
 }

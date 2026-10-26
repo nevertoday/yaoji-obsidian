@@ -5,9 +5,11 @@
 (function (root) {
   'use strict';
 
-  const ATTACHMENT_RE = /!\[\[([^\]]+?)\]\]|!\[[^\]]*\]\(\s*(?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\s*\)/g;
-  const MD_LINK_RE = /\[([^\]\n]+)\]\(\s*<?([^\s)>]+)>?\s*\)/g;
-  const WIKI_LINK_RE = /\[\[([^\]\n]+?)\]\]/g;
+  // 每一段都有上限（名字、标题 500 字，网址 2048 字）：很长一段只有开头没有收尾的字（比如几万个「![a」）
+  // 也是一遍扫完，不会越长越慢到卡住；平常的附件、链接都在上限里，结果不变
+  const ATTACHMENT_RE = /!\[\[([^\]]{1,500}?)\]\]|!\[[^\]]{0,500}\]\(\s*(?:<([^>]{1,2048})>|([^\s)]{1,2048}))(?:\s+["'][^"']{0,500}["'])?\s*\)/g;
+  const MD_LINK_RE = /\[([^\]\n]{1,500})\]\(\s*<?([^\s)>]{1,2048})>?\s*\)/g;
+  const WIKI_LINK_RE = /\[\[([^\]\n]{1,500}?)\]\]/g;
 
   function hostOf(url) {
     try { return new URL(url).hostname.replace(/^www\./i, '').toLowerCase(); } catch { return ''; }
@@ -24,15 +26,15 @@
   function stripInline(text) {
     return String(text || '')
       .replace(MD_LINK_RE, (_m, label, url) => linkText(label, url))
-      .replace(/<(https?:\/\/[^\s>]+)>/gi, '$1')
+      .replace(/<(https?:\/\/[^\s>]{1,2048})>/gi, '$1')
       .replace(WIKI_LINK_RE, (_m, inner) => {
         const [target, alias] = inner.split('|');
         return (alias || target.split('#')[0] || target).trim();
       })
-      .replace(/\*\*(?=\S)([^\n]*?\S)\*\*/g, '$1')
-      .replace(/==(?=\S)([^\n]*?\S)==/g, '$1')
-      .replace(/~~(?=\S)([^\n]*?\S)~~/g, '$1')
-      .replace(/`([^`\n]+)`/g, '$1');
+      .replace(/\*\*(?=\S)([^\n]{0,500}?\S)\*\*/g, '$1')
+      .replace(/==(?=\S)([^\n]{0,500}?\S)==/g, '$1')
+      .replace(/~~(?=\S)([^\n]{0,500}?\S)~~/g, '$1')
+      .replace(/`([^`\n]{1,500})`/g, '$1');
   }
 
   // 库里的位置 → 电脑上的完整路径；root 是 Windows 写法（C:\…）时路径也用反斜杠
@@ -117,10 +119,10 @@
   function oneLine(text) {
     const first = String(text || '').split('\n').find((line) => line.trim()) || '';
     return first
-      .replace(/!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g, (_, file) => file.split('/').pop())
-      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
-      .replace(/\[\[([^\]]+)\]\]/g, '$1')
-      .replace(/!?\[([^\]]*)\]\(([^)]+)\)/g, (_, label, url) => label || String(url).split('/').pop())
+      .replace(/!\[\[([^\]|]{1,500})(?:\|[^\]]{0,500})?\]\]/g, (_, file) => file.split('/').pop())
+      .replace(/\[\[([^\]|]{1,500})\|([^\]]{1,500})\]\]/g, '$2')
+      .replace(/\[\[([^\]]{1,500})\]\]/g, '$1')
+      .replace(/!?\[([^\]]{0,500})\]\(([^)]{1,2048})\)/g, (_, label, url) => label || String(url).split('/').pop())
       // 发到 GitHub 的问题地址写成 #42（和列表里一样），别的网址只留域名
       .replace(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/(\d+)(?![\w/])/g, '#$1')
       .replace(/https?:\/\/([^/\s]+)\S*/g, '$1')

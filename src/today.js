@@ -11,6 +11,9 @@ export const AUTO_DAYS = 7;
 // 往前看多少天、连着多少天没有日记就停
 export const LOOK_BACK_DAYS = 45;
 export const MISSING_STREAK_LIMIT = 30;
+// 「全部带来」最多往前看这么多天；文件名连着这么多天都是看过的那几个（周记、月记、不带日期的文件名）就停
+export const ALL_LOOK_BACK_DAYS = 3660;
+export const REPEAT_STREAK_LIMIT = 400;
 
 export function joinPath(folder, name) {
   const dir = String(folder || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
@@ -34,9 +37,23 @@ export function dateKey(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-// Templater 之类还没渲染完（文件里还有 <% %>）：先别动
+// Templater 还没渲染完：代码以外还有 Templater 的标签（<% tp.… %> 或 <%* … %>）就先别动。
+// 代码里的、ERB 的 <%= %>、随手写的 <% %> 不算（不然每加一件都要白等几秒）
 export function isTemplatePending(content) {
-  return /<%[\s\S]*?%>/.test(String(content || ''));
+  let fence = '';
+  const outside = String(content || '').split('\n').filter((line) => {
+    const mark = line.match(/^[ \t]*(`{3,}|~{3,})/)?.[1] || '';
+    if (fence) {
+      if (mark && mark[0] === fence[0] && mark.length >= fence.length) fence = '';
+      return false;
+    }
+    if (mark) { fence = mark; return false; }
+    return true;
+  }).join('\n').replace(/`[^`\n]*`/g, '');
+  for (const match of outside.matchAll(/<%[-_]?([*+]?)([\s\S]*?)[-_]?%>/g)) {
+    if (match[1] === '*' || /\btp\./.test(match[2])) return true;
+  }
+  return false;
 }
 
 export function hasBroughtMark(content) {
@@ -48,12 +65,16 @@ export function isBroughtLine(text) {
   return String(text || '').trim() === BROUGHT_MARK;
 }
 
+// Windows 换行（\r\n）的日记，加的行也用 \r\n
+const eolOf = (text) => (/\r\n/.test(text) ? '\r\n' : '\n');
+
 // 日记里没有事项这一节就加在末尾；有就原样不动
 export function ensureSection(content, section, parser) {
   const text = String(content || '');
   if (parser.extractSection(text, section)) return text;
+  const eol = eolOf(text);
   const body = text.replace(/\s+$/, '');
-  return body ? `${body}\n\n${section}\n` : `${section}\n`;
+  return body ? `${body}${eol}${eol}${section}${eol}` : `${section}\n`;
 }
 
 // 在事项标题下面写上「今天带过了」。没有这一节先加上
@@ -62,9 +83,19 @@ export function withBroughtMark(content, section, parser) {
   if (hasBroughtMark(text)) return text;
   const found = parser.extractSection(text, section);
   const lines = text.split('\n');
-  lines.splice(found.startLine + 1, 0, BROUGHT_MARK);
+  lines.splice(found.startLine + 1, 0, BROUGHT_MARK + (eolOf(text) === '\r\n' ? '\r' : ''));
   return lines.join('\n');
 }
+
+// 把这一节写回去；写完读回来任务少了（被截断、错位）就不写，返回 null
+function rewrite(content, section, todos, parser) {
+  const generated = parser.todosToMarkdown(todos);
+  const next = parser.replaceSection(content, section, generated);
+  if (typeof parser.sectionRoundTrips === 'function' && !parser.sectionRoundTrips(next, section, generated)) return null;
+  return next;
+}
+
+const countTasks = (text) => (String(text || '').match(/^[ \t]*[-*+] \[[ xX]\]/gm) || []).length;
 
 // 新日记的内容：有模板就用模板（替换日记插件认的 {{date}} {{title}} {{time}}），再补上事项这一节
 export function newNoteContent({ template = '', title = '', date, formatDate, section, parser }) {
@@ -100,11 +131,13 @@ export function splitPending(list) {
   const pending = [];
   for (const todo of list || []) {
     const child = splitPending(todo.children || []);
+    // 留在下面的子任务按这件的下一级重新排缩进（不然隔了一层做完的，孙任务会变成并列）
+    const under = (nodes) => nodes.map((node) => normalizeIndent(node, (Number(todo.indent) || 0) + 1));
     if (!todo.checked) {
-      pending.push({ ...todo, children: child.pending });
+      pending.push({ ...todo, children: under(child.pending) });
       child.remain.forEach((node) => remain.push(normalizeIndent(node, 0)));
     } else {
-      remain.push({ ...todo, children: child.remain });
+      remain.push({ ...todo, children: under(child.remain) });
       child.pending.forEach((node) => pending.push(normalizeIndent(node, 0)));
     }
   }
@@ -117,29 +150,56 @@ export function takePending(content, section, parser) {
   if (!found) return { pending: [], content };
   const { remain, pending } = splitPending(parser.parseTodos(found.content));
   if (!pending.length) return { pending: [], content };
-  return {
-    pending,
-    content: parser.replaceSection(content, section, parser.todosToMarkdown(remain))
-  };
+  // 写回去读不回来、或者拿走的加留下的对不上原来的任务数：这一天不动（宁可不带，也不丢）
+  const after = rewrite(content, section, remain, parser);
+  const left = after === null ? null : parser.extractSection(after, section);
+  if (!left || countTasks(left.content) + countTasks(parser.todosToMarkdown(pending)) < countTasks(found.content)) {
+    return { pending: [], content };
+  }
+  return { pending, content: after };
 }
 
 const textKey = (text) => String(text || '').split('\n').map((line) => line.trim().replace(/\s+/g, ' ')).join('\n').trim();
 
-// 带来的放到今天最后；今天已经有一模一样没做完的就不再放一条
+// 带来的放到今天最后；今天已经有一模一样没做完的就不再放一条，它带来的子任务合到今天那一条下面（不丢）。
+// record 记下真加进去的是哪几条（撤销时只拿这些）：
+// { key, added: true, skip, children } = 整条是带来的，skip = 放进去时这一层前面已经有几条同样的字；
+// { key, added: false, children } = 今天本来就有的那一条，只有 children 里的是带来的
 export function mergeIntoToday(content, moved, section, parser) {
   const text = ensureSection(content, section, parser);
   const found = parser.extractSection(text, section);
   const todos = parser.parseTodos(found.content);
-  const open = new Set(todos.filter((t) => !t.checked).map((t) => textKey(t.text)));
+  const { added, record } = mergeList(todos, moved, 0);
+  const next = rewrite(text, section, todos, parser);
+  if (next === null) throw new Error('section did not read back');
+  return { content: next, added, record };
+}
+
+function mergeList(list, moved, depth) {
+  const entries = [];
   let added = 0;
-  for (const todo of moved) {
+  for (const todo of moved || []) {
     const key = textKey(todo.text);
-    if (key && open.has(key)) continue;
-    todos.push(todo);
-    open.add(key);
+    const same = key ? list.find((item) => !item.checked && textKey(item.text) === key) : null;
+    if (same) {
+      same.children = same.children || [];
+      const inner = mergeList(same.children, todo.children || [], depth + 1);
+      added += inner.added;
+      const entry = entries.find((e) => e.node === same);
+      if (entry) continue; // 同一次带来的两条一样的：前一条整条是新加的，记录在下面重新算
+      if (inner.record.length) entries.push({ key, added: false, children: inner.record });
+      continue;
+    }
+    const skip = list.filter((item) => textKey(item.text) === key).length;
+    const node = normalizeIndent(todo, depth);
+    list.push(node);
+    entries.push({ key, added: true, skip, node });
     added += 1;
   }
-  return { content: parser.replaceSection(text, section, parser.todosToMarkdown(todos)), added };
+  // 整条新加的：按最后的样子（可能又合进了子任务）记下整棵
+  const snapshot = (node) => ({ key: textKey(node.text), added: true, skip: 0, children: (node.children || []).map(snapshot) });
+  const record = entries.map((e) => (e.added ? { ...snapshot(e.node), skip: e.skip } : e));
+  return { added, record };
 }
 
 // 往前看：哪几天还有没做完的。只读不写
@@ -147,8 +207,18 @@ export function mergeIntoToday(content, moved, section, parser) {
 export async function planCarry({ io, settings, today, formatDate, parser, maxDays = LOOK_BACK_DAYS, all = false }) {
   const days = [];
   let missing = 0;
-  for (let offset = 1; all || offset <= maxDays; offset++) {
+  // 周记、月记、不带日期的文件名：好几天是同一个文件。和今天同一个文件的不算「以前」，看过的不再看
+  const seen = new Set([notePath(settings, today, formatDate)]);
+  let repeats = 0;
+  for (let offset = 1; offset <= (all ? ALL_LOOK_BACK_DAYS : maxDays); offset++) {
     const path = notePath(settings, addDays(today, -offset), formatDate);
+    if (seen.has(path)) {
+      repeats += 1;
+      if (repeats >= REPEAT_STREAK_LIMIT) break;
+      continue;
+    }
+    seen.add(path);
+    repeats = 0;
     const before = await io.read(path);
     if (before == null) {
       missing += 1;
@@ -179,26 +249,52 @@ export function splitCarry(plan, { canBring = true } = {}) {
   };
 }
 
-// 撤销时从今天拿掉带来的那几条：按文字认，每条只拿一次，只拿还没勾掉的
-export function removeBrought(content, moved, section, parser) {
+// 撤销时（今天这期间又改过）从今天拿掉带来的：只拿 mergeIntoToday 记下的那几条，
+// 而且要和带来时一模一样（没勾、子任务没增没减）；今天本来就有的、用户动过的都留着，partial = 有没拿掉的
+export function undoBrought(content, record, section, parser) {
   const found = parser.extractSection(String(content || ''), section);
-  if (!found) return content;
-  const want = new Map();
-  for (const todo of moved) {
-    const key = textKey(todo.text);
-    want.set(key, (want.get(key) || 0) + 1);
-  }
+  const entries = (record || []).map(toRecord);
+  if (!found) return { content, partial: entries.length > 0 };
   const todos = parser.parseTodos(found.content);
-  const kept = [];
-  for (let i = todos.length - 1; i >= 0; i--) {
-    const key = textKey(todos[i].text);
-    if (!todos[i].checked && want.get(key) > 0) {
-      want.set(key, want.get(key) - 1);
-      continue;
+  const partial = unmerge(todos, entries);
+  const next = rewrite(content, section, todos, parser);
+  return next === null ? { content, partial: true } : { content: next, partial };
+}
+
+export function removeBrought(content, record, section, parser) {
+  return undoBrought(content, record, section, parser).content;
+}
+
+// 以前直接传带来的待办（没有 key）：当成整条带来的
+function toRecord(item) {
+  if (typeof item?.key === 'string') return item;
+  return { key: textKey(item?.text), added: true, skip: 0, children: (item?.children || []).map(toRecord) };
+}
+
+// 和带来时一模一样：没勾，子任务一条不多一条不少、也都没动
+function untouched(todo, entry) {
+  const children = todo.children || [];
+  return !todo.checked && textKey(todo.text) === entry.key && children.length === entry.children.length
+    && children.every((child, i) => untouched(child, entry.children[i]));
+}
+
+function unmerge(list, entries) {
+  let partial = false;
+  for (const entry of [...entries].reverse()) {
+    const same = list.filter((item) => textKey(item.text) === entry.key);
+    if (entry.added) {
+      // 前 skip 条是今天本来就有的；带来的放在最后，从后往前找
+      const hit = same.slice(entry.skip || 0).reverse().find((item) => untouched(item, entry));
+      if (hit) list.splice(list.indexOf(hit), 1);
+      else partial = true;
+    } else {
+      const host = same.find((item) => !item.checked) || same[0];
+      if (!host) { partial = true; continue; }
+      host.children = host.children || [];
+      if (unmerge(host.children, entry.children)) partial = true;
     }
-    kept.unshift(todos[i]);
   }
-  return parser.replaceSection(content, section, parser.todosToMarkdown(kept));
+  return partial;
 }
 
 // 加一件事到今天最后
@@ -209,7 +305,9 @@ export function appendTodo(content, text, section, parser) {
   const found = parser.extractSection(base, section);
   const todos = parser.parseTodos(found.content);
   todos.push({ id: parser.generateId(), checked: false, text: value, highlighted: false, indent: 0, children: [] });
-  return parser.replaceSection(base, section, parser.todosToMarkdown(todos));
+  const next = rewrite(base, section, todos, parser);
+  if (next === null) throw new Error('section did not read back');
+  return next;
 }
 
 // 光标停在事项这一节最后一条下面（打开今天时用）：返回行号
@@ -246,10 +344,15 @@ export function editTodo(content, path, expectText, change, section, parser) {
   const todo = todoAt(todos, path);
   if (!todo || todo.text !== expectText) return null;
   change(todo);
-  return parser.replaceSection(content, section, parser.todosToMarkdown(todos));
+  return rewrite(content, section, todos, parser);
 }
 
 export function deleteTodo(content, path, expectText, section, parser) {
+  return takeTodo(content, path, expectText, section, parser)?.content ?? null;
+}
+
+// 删一件（连子任务），把删掉的整块记下来（removed），撤销时 restoreTodo 原样放回
+export function takeTodo(content, path, expectText, section, parser) {
   const found = parser.extractSection(String(content || ''), section);
   if (!found) return null;
   const todos = parser.parseTodos(found.content);
@@ -257,8 +360,28 @@ export function deleteTodo(content, path, expectText, section, parser) {
   const list = path.length > 1 ? parent?.children : todos;
   const index = path[path.length - 1];
   if (!list?.[index] || list[index].text !== expectText) return null;
-  list.splice(index, 1);
-  return parser.replaceSection(content, section, parser.todosToMarkdown(todos));
+  const [todo] = list.splice(index, 1);
+  const next = rewrite(content, section, todos, parser);
+  if (next === null) return null;
+  return { content: next, removed: { todo, path: [...path], parentText: parent ? parent.text : null } };
+}
+
+// 撤销删除（这期间文件又改过）：父任务还在（字对得上）就放回它下面原来的位置，不在就放到最后；子任务、勾选都在
+export function restoreTodo(content, removed, section, parser) {
+  const base = ensureSection(content, section, parser);
+  const found = parser.extractSection(base, section);
+  const todos = parser.parseTodos(found.content);
+  const { todo, path, parentText } = removed;
+  const parent = path.length > 1 ? todoAt(todos, path.slice(0, -1)) : null;
+  if (parent && parent.text === parentText) {
+    parent.children = parent.children || [];
+    parent.children.splice(Math.min(path[path.length - 1], parent.children.length), 0, normalizeIndent(todo, path.length - 1));
+  } else if (path.length === 1) {
+    todos.splice(Math.min(path[0], todos.length), 0, normalizeIndent(todo, 0));
+  } else {
+    todos.push(normalizeIndent(todo, 0));
+  }
+  return rewrite(base, section, todos, parser) ?? content;
 }
 
 // 一天的事项（树）。没有这一节返回空

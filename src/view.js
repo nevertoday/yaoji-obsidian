@@ -4,7 +4,7 @@
 // 全按日记文件画：点方框、星标、删除都是改文件，文件一变（这里改的、在笔记里改的、手机同步来的）就重画。
 import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
-import { AUTO_LIMIT, addDays, appendTodo, dateKey, deleteTodo, editTodo, readTodos } from './today.js';
+import { AUTO_LIMIT, addDays, dateKey, editTodo, readTodos, restoreTodo, takeTodo } from './today.js';
 import { ISSUE_URL_RE } from './github.js';
 import G from './vendor/github-issues.js';
 import { Solar } from 'lunar-javascript';
@@ -72,7 +72,12 @@ export class TodayView extends ItemView {
       const value = this.inputEl.value.trim();
       if (!value) return;
       this.inputEl.value = '';
-      this.plugin.addTodoOn(this.shownDate(), value).catch((error) => console.error('[今日待办] 添加失败', error));
+      this.plugin.addTodoOn(this.shownDate(), value).catch((error) => {
+        console.error('[今日待办] 添加失败', error);
+        // 没写进去：字放回输入框，不让它就这么没了
+        if (!this.inputEl.value) this.inputEl.value = value;
+        this.plugin.notify(t('写不进今天的日记：{error}', { error: error?.message || error }), [], 8000);
+      });
     });
 
     // 文件变了就重画：只看这一天的那篇
@@ -184,7 +189,7 @@ export class TodayView extends ItemView {
     box.checked = !!todo.checked;
     box.addEventListener('click', (event) => {
       event.preventDefault();
-      this.change(todo, path, (item) => { item.checked = !item.checked; });
+      this.change(todo, path, (item) => { item.checked = !item.checked; }, sourcePath);
     });
 
     const body = row.createDiv({ cls: 'yaoji-body' });
@@ -223,7 +228,7 @@ export class TodayView extends ItemView {
       menu.addItem((item) => item
         .setTitle(todo.highlighted ? t('取消星标') : t('星标'))
         .setIcon('star')
-        .onClick(() => this.change(todo, path, (target) => { target.highlighted = !target.highlighted; })));
+        .onClick(() => this.change(todo, path, (target) => { target.highlighted = !target.highlighted; }, sourcePath)));
       // 发到 GitHub（会员）：发过的给「在 GitHub 打开 #42」；登录了、连着 GitHub 才有「发到 GitHub」
       const issue = this.plugin.github?.issueOf(todo.text);
       if (issue) {
@@ -232,7 +237,7 @@ export class TodayView extends ItemView {
           .setIcon('github')
           .onClick(() => window.open(issue.url)));
       } else if (this.plugin.github?.ready()) {
-        const file = this.plugin.fileAt(this.plugin.pathFor(this.shownDate()));
+        const file = this.plugin.fileAt(sourcePath);
         if (file) {
           menu.addItem((item) => item
             .setTitle(t('发到 GitHub'))
@@ -243,7 +248,7 @@ export class TodayView extends ItemView {
       menu.addItem((item) => item
         .setTitle(t('删除'))
         .setIcon('trash-2')
-        .onClick(() => this.remove(todo, path)));
+        .onClick(() => this.remove(todo, path, sourcePath)));
       menu.showAtMouseEvent(event);
     });
   }
@@ -271,8 +276,9 @@ export class TodayView extends ItemView {
     link.addEventListener('click', () => this.goTo(note.date));
   }
 
-  async change(todo, path, apply) {
-    const file = this.plugin.fileAt(this.plugin.pathFor(this.shownDate()));
+  // sourcePath：这一行是从哪篇日记画出来的。过了零点还没重画时，点的是昨天那篇的行，就只改昨天那篇
+  async change(todo, path, apply, sourcePath = this.plugin.pathFor(this.shownDate())) {
+    const file = this.plugin.fileAt(sourcePath);
     if (!file) return;
     let ok = false;
     await this.app.vault.process(file, (content) => {
@@ -284,22 +290,26 @@ export class TodayView extends ItemView {
     if (!ok) this.redraw();
   }
 
-  async remove(todo, path) {
-    const file = this.plugin.fileAt(this.plugin.pathFor(this.shownDate()));
+  async remove(todo, path, sourcePath = this.plugin.pathFor(this.shownDate())) {
+    const file = this.plugin.fileAt(sourcePath);
     if (!file) return;
     let before = '';
     let after = null;
+    let removed = null;
     await this.app.vault.process(file, (content) => {
       before = content;
-      after = deleteTodo(content, path, todo.text, this.plugin.settings.section, this.plugin.parser);
-      return after === null ? content : after;
+      const taken = takeTodo(content, path, todo.text, this.plugin.settings.section, this.plugin.parser);
+      if (!taken) return content;
+      after = taken.content;
+      removed = taken.removed;
+      return after;
     });
     if (after === null) { this.redraw(); return; }
     this.plugin.notify(t('已删除'), [{
       label: t('撤销'),
-      // 这期间又改过：不整篇换回去，只把这件加回最后
+      // 这期间又改过：不整篇换回去，把删掉的整块（子任务、勾选都在）放回原来的位置
       run: () => this.app.vault.process(file, (content) => (
-        content === after ? before : appendTodo(content, todo.text, this.plugin.settings.section, this.plugin.parser)
+        content === after ? before : restoreTodo(content, removed, this.plugin.settings.section, this.plugin.parser)
       ))
     }], 6000);
   }
