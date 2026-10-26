@@ -236,6 +236,34 @@ export const MESSAGES = {
   '沿用': {
     'zh-TW': '沿用', en: 'Use', ja: '使う', ko: '사용', es: 'Usar', fr: 'Utiliser', de: 'Übernehmen',
     pt: 'Usar', ru: 'Взять', ar: 'استخدام', th: 'ใช้', vi: 'Dùng'
+  },
+  '应用商店里的今日待办': {
+    'zh-TW': '應用商店裡的今日待辦', en: 'Today’s To-dos from the Chrome Web Store', ja: 'Chrome ウェブストアの「今日のToDo」',
+    ko: 'Chrome 웹 스토어의 Today’s To-dos', es: 'Today’s To-dos de Chrome Web Store', fr: 'Today’s To-dos du Chrome Web Store',
+    de: 'Today’s To-dos aus dem Chrome Web Store', pt: 'Today’s To-dos da Chrome Web Store', ru: 'Today’s To-dos из Chrome Web Store',
+    ar: 'Today’s To-dos من سوق Chrome الإلكتروني', th: 'Today’s To-dos จาก Chrome เว็บสโตร์', vi: 'Today’s To-dos từ Chrome Web Store'
+  },
+  '不是应用商店里的（扩展 ID {id}）': {
+    'zh-TW': '不是應用商店裡的（擴充功能 ID {id}）', en: 'Not from the Chrome Web Store (extension ID {id})',
+    ja: 'Chrome ウェブストアのものではありません（拡張機能 ID {id}）', ko: 'Chrome 웹 스토어 버전이 아니에요(확장 프로그램 ID {id})',
+    es: 'No es de Chrome Web Store (ID de extensión {id})', fr: 'Pas issu du Chrome Web Store (ID d’extension {id})',
+    de: 'Nicht aus dem Chrome Web Store (Erweiterungs-ID {id})', pt: 'Não é da Chrome Web Store (ID da extensão {id})',
+    ru: 'Не из Chrome Web Store (ID расширения {id})', ar: 'ليست من سوق Chrome الإلكتروني (معرّف الإضافة {id})',
+    th: 'ไม่ได้มาจาก Chrome เว็บสโตร์ (รหัสส่วนขยาย {id})', vi: 'Không phải từ Chrome Web Store (ID tiện ích {id})'
+  },
+  '浏览器连不到这个库：本机端口 {port} 被占用了（可能另一个库也开着今日待办）': {
+    'zh-TW': '瀏覽器連不到這個庫：本機連接埠 {port} 被占用了（可能另一個庫也開著今日待辦）',
+    en: 'Your browser can’t connect to this vault: local port {port} is already in use (maybe another vault has Today’s To-dos open)',
+    ja: 'ブラウザからこの保管庫に接続できません：ローカルポート {port} が使用中です（別の保管庫で「今日のToDo」が開いているかもしれません）',
+    ko: '브라우저가 이 보관소에 연결할 수 없어요: 로컬 포트 {port}가 이미 사용 중이에요(다른 보관소에서 Today’s To-dos가 열려 있을 수 있어요)',
+    es: 'El navegador no puede conectarse a esta bóveda: el puerto local {port} ya está en uso (quizá otra bóveda tiene abierto Today’s To-dos)',
+    fr: 'Le navigateur ne peut pas se connecter à ce coffre : le port local {port} est déjà utilisé (un autre coffre a peut-être Today’s To-dos ouvert)',
+    de: 'Der Browser kann sich nicht mit diesem Vault verbinden: Der lokale Port {port} ist belegt (vielleicht hat ein anderer Vault Today’s To-dos geöffnet)',
+    pt: 'O navegador não consegue se conectar a este cofre: a porta local {port} já está em uso (talvez outro cofre esteja com o Today’s To-dos aberto)',
+    ru: 'Браузер не может подключиться к этому хранилищу: локальный порт {port} уже занят (возможно, Today’s To-dos открыт в другом хранилище)',
+    ar: 'لا يمكن للمتصفح الاتصال بهذا المخزن: المنفذ المحلي {port} مستخدم بالفعل (ربما يفتح مخزن آخر Today’s To-dos)',
+    th: 'เบราว์เซอร์เชื่อมต่อคลังนี้ไม่ได้: พอร์ตในเครื่อง {port} ถูกใช้อยู่แล้ว (อาจมีคลังอื่นเปิด Today’s To-dos อยู่)',
+    vi: 'Trình duyệt không kết nối được với kho này: cổng cục bộ {port} đang được dùng (có thể kho khác đang mở Today’s To-dos)'
   }
 };
 

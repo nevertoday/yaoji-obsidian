@@ -3,8 +3,9 @@
 import * as obsidian from 'obsidian';
 import { t } from './i18n.js';
 import { notePath } from './today.js';
+import { browserSummary, extensionId } from './bridge.js';
 
-const { PluginSettingTab, Setting, moment, normalizePath } = obsidian;
+const { PluginSettingTab, Setting, normalizePath } = obsidian;
 
 export const DEFAULT_SETTINGS = {
   folder: '日记',
@@ -76,7 +77,8 @@ export class YaojiSettingTab extends PluginSettingTab {
 
     let preview = null;
     const showPreview = () => {
-      const path = normalizePath(notePath(settings, this.plugin.now(), (d, p) => moment(d).format(p)));
+      // 和真正建日记用同一个 formatDate：moment 的默认时区和电脑不同时也不会差一天
+      const path = normalizePath(notePath(settings, this.plugin.now(), (d, p) => this.plugin.formatDate(d, p)));
       preview?.setText(t('今天是 {path}', { path }));
     };
 
@@ -117,11 +119,15 @@ export class YaojiSettingTab extends PluginSettingTab {
         return text;
       });
 
-    // 连上的浏览器：一个一行，能断开。一个都没有就不出现
+    // 连上的浏览器：一个一行，能断开。一个都没有就不出现。
+    // 名字是扩展自己报的，谁都能报「Chrome」：再写上是不是应用商店里的今日待办，不是就写出扩展 ID（鼠标停上去看全的）
     for (const browser of Array.isArray(settings.browsers) ? settings.browsers : []) {
-      new Setting(containerEl)
+      const row = new Setting(containerEl)
         .setName(t('连着的浏览器'))
-        .setDesc(`${browser.name || 'Chrome'} · ${new Date(browser.at || Date.now()).toLocaleDateString()}`)
+        .setDesc(browserSummary(browser));
+      const id = extensionId(browser.origin);
+      if (id) row.descEl.setAttribute('title', id);
+      row
         .addButton((button) => button.setButtonText(t('断开')).onClick(async () => {
           settings.browsers = settings.browsers.filter((entry) => entry.token !== browser.token);
           await plugin.saveSettings();
