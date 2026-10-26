@@ -14,6 +14,22 @@ const V1_BASE = 'https://vip.xiaoxiaodong.ai/api/v1/products/yaoji';
 export const AUTH_ACTION = 'yaoji-auth';
 export const REDIRECT_URI = `obsidian://${AUTH_ACTION}`;
 const LOGIN_WAIT_MS = 10 * 60 * 1000;
+// 同时等着的登录最多几个（点了两下「登录」，两个浏览器标签页都能登成）
+const MAX_PENDING_LOGINS = 3;
+const OFFICIAL_ORIGIN = new URL(MEMBER_BASE).origin;
+
+// 开发时换会员站地址（data.json 里的 memberBase）只认本机（http://localhost、http://127.0.0.1，端口随意）和正式会员站；
+// 别的地址（别人的 http 网站、javascript: 之类）一律不认，照旧连正式会员站——不然改了 data.json 就能把登录和会话带走
+export function safeMemberBase(value) {
+  const text = String(value || '').trim().replace(/\/+$/, '');
+  if (!text || text === MEMBER_BASE) return MEMBER_BASE;
+  let url;
+  try { url = new URL(text); } catch { return MEMBER_BASE; }
+  if (url.username || url.password || url.search || url.hash) return MEMBER_BASE;
+  const local = url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+  const official = url.protocol === 'https:' && url.origin === OFFICIAL_ORIGIN;
+  return local || official ? text : MEMBER_BASE;
+}
 
 function base64Url(bytes) {
   let text = '';
@@ -49,17 +65,22 @@ export function memberError(code, message = '') {
 
 export class MemberClient {
   // store：{ get() → 存着的会话（{ token, expiresAt, member }）或 null，set(会话或 null) }
-  // base：会员站地址（开发时 data.json 里写 memberBase 换成本机假的会员站；界面上没有这一项）
+  // base：会员站地址（开发时 data.json 里写 memberBase 换成本机假的会员站；界面上没有这一项；只认本机和正式会员站）
   constructor(store, { base = () => MEMBER_BASE } = {}) {
     this.store = store;
-    this.base = base;
-    this.pending = null;
+    this.base = () => safeMemberBase(base());
+    // 等着浏览器跳回来的登录：[{ verifier, state, at }]，每个各有各的码和期限
+    this.pending = [];
   }
 
   session() {
     const value = this.store.get();
     if (!value?.token) return null;
-    if (value.expiresAt && Date.parse(value.expiresAt) <= Date.now()) return null;
+    // 到期时间认不出来（不是正经日期）就当过期了，不当成永远有效
+    if (value.expiresAt) {
+      const at = Date.parse(value.expiresAt);
+      if (!Number.isFinite(at) || at <= Date.now()) return null;
+    }
     return value;
   }
 
@@ -75,7 +96,8 @@ export class MemberClient {
   async startLogin() {
     const verifier = randomText(48);
     const state = randomText(24);
-    this.pending = { verifier, state, at: Date.now() };
+    const now = Date.now();
+    this.pending = [...this.pending.filter((item) => now - item.at <= LOGIN_WAIT_MS), { verifier, state, at: now }].slice(-MAX_PENDING_LOGINS);
     const url = new URL(`${this.base()}/authorize`);
     url.searchParams.set('redirect_uri', REDIRECT_URI);
     url.searchParams.set('state', state);
@@ -84,16 +106,20 @@ export class MemberClient {
     window.open(url.toString());
   }
 
-  // 浏览器跳回 obsidian://yaoji-auth?code=…&state=…：state 对得上、没过期，才去换会话
+  // 浏览器跳回 obsidian://yaoji-auth?code=…&state=…：state 对得上、没过期，才去换会话。
+  // 对不上的（别处来的链接）不碰正在等的登录；对上的那个用一次就作废
   async finishLogin(params) {
-    const pending = this.pending;
-    this.pending = null;
-    if (!pending || params?.state !== pending.state || Date.now() - pending.at > LOGIN_WAIT_MS || !params?.code) {
-      throw memberError('login_mismatch');
-    }
+    const now = Date.now();
+    this.pending = this.pending.filter((item) => now - item.at <= LOGIN_WAIT_MS);
+    const state = typeof params?.state === 'string' ? params.state : '';
+    const pending = state ? this.pending.find((item) => item.state === state) : null;
+    if (!pending) throw memberError('login_mismatch');
+    this.pending = this.pending.filter((item) => item !== pending);
+    if (!params?.code) throw memberError('login_mismatch');
     const data = await this.post('/token', { code: params.code, code_verifier: pending.verifier, redirect_uri: REDIRECT_URI }, { auth: false });
     if (!data?.access_token) throw memberError('login_failed');
     const member = pickMember(data.member);
+    this.pending = [];
     this.store.set({ token: data.access_token, expiresAt: data.expires_at || '', member });
     return member;
   }

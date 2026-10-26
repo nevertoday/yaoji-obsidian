@@ -50,7 +50,7 @@ On mobile this part is off; everything else works.
 Under Settings › Member, “Sign in” opens the Xiaoxiaodong member site in your browser and returns to Obsidian through `obsidian://yaoji-auth`. With a paid membership you can:
 
 - **Send a to-do to GitHub.** Right-click it in the sidebar › Send to GitHub, then pick a repository (type to search). The to-do becomes an issue and the issue link is added to the to-do.
-- **Tick off to-dos automatically.** When an issue you sent is closed as completed, the to-do in today’s or the last 14 days’ notes is checked. Issues closed as “not planned” or “duplicate” are left alone.
+- **Tick off to-dos automatically.** When a GitHub issue linked in an unfinished to-do (one you sent, or a link you pasted) is closed as completed, that to-do in today’s or the last 14 days’ notes is checked. Issues closed as “not planned” or “duplicate” are left alone.
 
 It is the same account and the same membership as the browser extension.
 
@@ -58,7 +58,7 @@ It is the same account and the same membership as the browser extension.
 
 - **Account:** member features need a Xiaoxiaodong account. Everything else works without one.
 - **Payment:** member features (send to GitHub, automatic ticking) need a paid membership. Creating notes, carrying over, the sidebar, commands and the browser connection are free.
-- **Network use:** without signing in, the plugin makes no internet requests. After you sign in, it talks only to `vip.xiaoxiaodong.ai`, and only for member features: to sign in and check your membership and GitHub connection, to load your repository list (once a day), to send the title and text of a to-do you chose to send to GitHub, and every 10 minutes (or when you come back to Obsidian) to ask whether the issues you sent were closed. The rest of your notes is never sent.
+- **Network use:** without signing in, the plugin makes no internet requests. After you sign in, it talks only to `vip.xiaoxiaodong.ai`, and only for member features: to sign in and check your membership and GitHub connection, to load your repository list (once a day), to send the title and text of a to-do you chose to send to GitHub, and every 10 minutes (or when you come back to Obsidian) to ask whether GitHub issues are closed: the issue links (repository and number only) found in unfinished to-dos of today’s and the last 14 days’ notes, including links you pasted yourself. The rest of your notes is never sent.
 - **Local server:** on desktop, the local endpoint described above (`127.0.0.1:27125`) for the browser extension.
 - No telemetry and no ads.
 
@@ -116,7 +116,7 @@ Source available, all rights reserved: free to install and use for personal use,
 设置 › 会员 里点「登录」，会在浏览器里打开小小东会员站，登录后跳回 Obsidian（`obsidian://yaoji-auth`）。付费会员可以：
 
 - **发到 GitHub**：侧边栏里右键一件事 › 发到 GitHub，选项目（打字就能找）。这件事变成那个项目的一个问题，问题地址接在这件事后面。
-- **问题关了自动打勾**：今天和最近 14 天的日记里发过的事，GitHub 上关成「完成」就自动勾上；关成「不打算做」「重复」的不替你打勾。
+- **问题关了自动打勾**：今天和最近 14 天的日记里，没做完的事里有 GitHub 问题地址的（发过去的，或你自己贴的），GitHub 上关成「完成」就自动勾上；关成「不打算做」「重复」的不替你打勾。
 
 和浏览器扩展是同一个账号、同一份会员。
 
@@ -124,7 +124,7 @@ Source available, all rights reserved: free to install and use for personal use,
 
 - **账号**：会员功能要小小东账号，其他都不用。
 - **付费**：会员功能（发到 GitHub、自动打勾）要付费会员。建日记、带过来、侧边栏、命令、连浏览器扩展都免费。
-- **联网**：不登录时插件不连外网。登录后只连 `vip.xiaoxiaodong.ai`，而且只为会员功能：登录、查会员和 GitHub 连接状态；取项目清单（一天一次）；把你选了「发到 GitHub」的那件事的标题和文字发过去；每 10 分钟（或回到 Obsidian 时）问一次发过的问题关没关。日记的其他内容不会发出去。
+- **联网**：不登录时插件不连外网。登录后只连 `vip.xiaoxiaodong.ai`，而且只为会员功能：登录、查会员和 GitHub 连接状态；取项目清单（一天一次）；把你选了「发到 GitHub」的那件事的标题和文字发过去；每 10 分钟（或回到 Obsidian 时）问一次 GitHub 上的问题关没关：今天和最近 14 天日记里没做完的事中出现的问题地址（只有项目名和编号），包括你自己贴进去的。日记的其他内容不会发出去。
 - **本机接口**：电脑版上给浏览器扩展用的 `127.0.0.1:27125`，见上面。
 - 不统计使用情况，没有广告。
 

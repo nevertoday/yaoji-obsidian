@@ -14,6 +14,10 @@ const STATUS_TTL_MS = 5 * 60 * 1000;
 const TICK_EVERY_MS = 10 * 60 * 1000;
 const TICK_MIN_GAP_MS = 2 * 60 * 1000;
 const CONNECT_WAIT_MS = 5 * 60 * 1000;
+const CONNECT_POLL_MS = 3000;
+// 连上了、项目清单还是空的（还在 GitHub 上选给哪些项目）：清单隔这么久才再要一次
+const CONNECT_REPOS_EVERY_MS = 15000;
+const FIRST_TICK_MS = 15000;
 const ACTED_LIMIT = 300;
 
 // 拷来的 github-issues.js 拼标题、正文时会找 TodoPlainText（去掉 Markdown 记号）
@@ -34,6 +38,28 @@ export class Github {
     this.statusAt = 0;
     this.lastTick = 0;
     this.ticking = false;
+    // 「连接 GitHub」那一轮等待：同一时间只有一轮，再点一下接着等这一轮
+    this.connecting = null;
+    this.firstTick = 0;
+    this.stopped = false;
+    // 插件关掉时：等着连 GitHub 的那一轮、开头那一下打勾都停掉
+    plugin.register?.(() => this.stop());
+  }
+
+  stop() {
+    this.stopped = true;
+    this.stopConnecting();
+    if (this.firstTick) window.clearTimeout(this.firstTick);
+    this.firstTick = 0;
+  }
+
+  stopConnecting() {
+    const run = this.connecting;
+    if (!run) return;
+    run.cancelled = true;
+    if (run.timer) window.clearTimeout(run.timer);
+    run.wake?.();
+    this.connecting = null;
   }
 
   get settings() {
@@ -64,14 +90,16 @@ export class Github {
     return Array.isArray(this.settings.repos) ? this.settings.repos : [];
   }
 
-  async refreshRepos({ fresh = false } = {}) {
+  // onlyIfChanged：清单和原来一样就不写 data.json（连接时一遍遍问，别一遍遍存）
+  async refreshRepos({ fresh = false, onlyIfChanged = false } = {}) {
     if (!fresh && this.repoList().length && Date.now() - Number(this.settings.reposAt || 0) < REPOS_TTL_MS) return this.repoList();
     const result = await this.api.repos();
+    const before = JSON.stringify(this.settings.repos ?? null);
     this.settings.repos = (Array.isArray(result?.repos) ? result.repos : [])
       .filter((repo) => repo.hasIssues !== false)
       .map((repo) => ({ fullName: repo.fullName, pushedAt: repo.pushedAt || '' }));
     this.settings.reposAt = Date.now();
-    await this.plugin.saveSettings();
+    if (!onlyIfChanged || JSON.stringify(this.settings.repos) !== before) await this.plugin.saveSettings();
     return this.repoList();
   }
 
@@ -85,22 +113,51 @@ export class Github {
     }
   }
 
-  // 打开 GitHub 授权页（浏览器里），等会员站那边连上
-  async connect() {
+  // 去会员站要一个 GitHub 授权页的地址，在浏览器里打开
+  async openConnectPage() {
     const result = await this.plugin.member.post('/github/connect', {});
     const url = String(result?.url || '');
     if (!url.startsWith('https://github.com/')) throw Object.assign(new Error('github_unavailable'), { code: 'github_unavailable' });
-    window.open(url);
-    const deadline = Date.now() + CONNECT_WAIT_MS;
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => window.setTimeout(resolve, 3000));
-      const state = await this.status({ fresh: true }).catch(() => null);
-      if (state?.connected) {
-        const repos = await this.refreshRepos({ fresh: true }).catch(() => []);
-        if (repos.length) return state;
-      }
+    if (!this.stopped) window.open(url);
+  }
+
+  // 打开 GitHub 授权页（浏览器里），等会员站那边连上。
+  // 同一时间只等一轮：已经在等时再点「连接 GitHub」，只再开一次授权页（上一页可能关掉了），接着等同一轮、时间重新算；插件关掉就停
+  connect() {
+    const running = this.connecting;
+    if (running) {
+      return this.openConnectPage().then(() => {
+        running.deadline = Date.now() + CONNECT_WAIT_MS;
+        return running.promise;
+      });
     }
-    return this.status({ fresh: true }).catch(() => null);
+    const run = { cancelled: false, timer: 0, wake: null, deadline: 0, promise: null };
+    this.connecting = run;
+    run.promise = (async () => {
+      try {
+        await this.openConnectPage();
+        run.deadline = Date.now() + CONNECT_WAIT_MS;
+        let reposAt = 0;
+        while (!run.cancelled && Date.now() < run.deadline) {
+          await new Promise((resolve) => {
+            run.wake = resolve;
+            run.timer = window.setTimeout(resolve, CONNECT_POLL_MS);
+          });
+          if (run.cancelled) return null;
+          const state = await this.status({ fresh: true }).catch(() => null);
+          // 连上了：要项目清单（还空着就隔一会儿再要，清单没变不写 data.json）
+          if (!run.cancelled && state?.connected && Date.now() - reposAt >= CONNECT_REPOS_EVERY_MS) {
+            reposAt = Date.now();
+            const repos = await this.refreshRepos({ fresh: true, onlyIfChanged: true }).catch(() => []);
+            if (repos.length) return state;
+          }
+        }
+        return run.cancelled ? null : this.status({ fresh: true }).catch(() => null);
+      } finally {
+        if (this.connecting === run) this.connecting = null;
+      }
+    })();
+    return run.promise;
   }
 
   async disconnect() {
@@ -159,7 +216,8 @@ export class Github {
     return t('没发出去，稍后再试');
   }
 
-  tools() {
+  // onRefused：这一回写日记被拒了（文件刚被改过、找不到）时叫一声
+  tools({ onRefused } = {}) {
     const plugin = this.plugin;
     return {
       parser: plugin.parser,
@@ -171,11 +229,18 @@ export class Github {
           if (!file) throw Object.assign(new Error('file_not_found'), { status: 404 });
           return plugin.app.vault.read(file);
         },
-        // 和扩展一样：读出来以后文件又被改过就不写（下一轮再来）
+        // 和扩展一样：读出来以后文件又被改过就不写（下一轮再来）。写没写进去要说：没写返回 false，不能算打了勾
         updateFileContent: async (path, content, { expectedContent } = {}) => {
           const file = plugin.fileAt(path);
-          if (!(file instanceof TFile)) return;
-          await plugin.app.vault.process(file, (current) => (expectedContent === undefined || current === expectedContent ? content : current));
+          if (!(file instanceof TFile)) { onRefused?.(); return false; }
+          let wrote = false;
+          await plugin.app.vault.process(file, (current) => {
+            if (expectedContent !== undefined && current !== expectedContent) return current;
+            wrote = true;
+            return content;
+          });
+          if (!wrote) onRefused?.();
+          return wrote;
         }
       }
     };
@@ -183,7 +248,7 @@ export class Github {
 
   // GitHub 上问题关了 → 日记里打勾（今天和最近 14 天）；关成「不打算做」「重复」的不替人打勾
   async tick({ force = false } = {}) {
-    if (this.ticking || !this.plugin.member.signedIn()) return;
+    if (this.stopped || this.ticking || !this.plugin.member.signedIn()) return;
     if (!force && Date.now() - this.lastTick < TICK_MIN_GAP_MS) return;
     this.ticking = true;
     this.lastTick = Date.now();
@@ -194,22 +259,36 @@ export class Github {
       const entries = await AutoTick.diaryEntries(tools, { today: this.plugin.now() });
       if (!entries.length) return;
       const result = await this.api.issuesState(G.issuesToAsk(entries).slice(0, 50));
-      // 在 GitHub 上搬走了的：先把日记里的老地址换成新的，再按新地址打勾
+      // 在 GitHub 上搬走了的：先把日记里的老地址换成新的，再按新地址打勾。
+      // 一篇日记一次换好，每件事都从原来的地址换（#1→#2、#2→#1 对换也不乱）
       const moved = G.applyMoves(entries, result?.issues);
-      for (const move of moved.moves) {
-        for (const entry of entries.filter((item) => item.url === move.from)) {
-          await AutoTick.replaceUrl(tools, entry.filePath, move.from, move.to.url).catch(() => false);
-        }
+      const moves = new Map(moved.moves.map((move) => [move.from, move.to.url]));
+      const unmoved = new Set();
+      for (const filePath of new Set(entries.filter((item) => moves.has(item.url)).map((item) => item.filePath))) {
+        let refused = false;
+        await AutoTick.replaceUrls(this.tools({ onRefused: () => { refused = true; } }), filePath, moves).catch(() => { refused = true; });
+        // 地址没换成：这篇里的事这一轮先不勾（日记里还是老地址，按新地址找不到），下一轮再来
+        if (refused) unmoved.add(filePath);
       }
       const acted = this.settings.acted || {};
-      const tick = G.todosToTick(moved.entries, moved.states, acted);
+      const tick = G.todosToTick(moved.entries, moved.states, acted).filter((entry) => !unmoved.has(entry.filePath));
       if (!tick.length) return;
       let done = 0;
+      const retry = new Set();
       for (const entry of tick) {
-        if (await AutoTick.setChecked(tools, entry.filePath, entry.url, true).catch(() => false)) done += 1;
+        let refused = false;
+        const ticked = await AutoTick.setChecked(this.tools({ onRefused: () => { refused = true; } }), entry.filePath, entry.url, true)
+          .catch(() => { refused = true; return false; });
+        // 真写进去了才算「已打勾」；没写成的不记成处理过，下一轮再来
+        if (refused) retry.add(entry.url);
+        else if (ticked) done += 1;
       }
       const next = { ...acted };
-      for (const entry of tick) { delete next[entry.url]; next[entry.url] = entry.closedAt; }
+      for (const entry of tick) {
+        if (retry.has(entry.url)) continue;
+        delete next[entry.url];
+        next[entry.url] = entry.closedAt;
+      }
       this.settings.acted = keepLatest(next, ACTED_LIMIT);
       await this.plugin.saveSettings();
       if (done) this.plugin.notify(t('GitHub 上关了 {count} 件，已打勾', { count: done }), [], 6000);
@@ -223,7 +302,8 @@ export class Github {
   startTicking() {
     this.plugin.registerInterval(window.setInterval(() => this.tick(), TICK_EVERY_MS));
     this.plugin.registerDomEvent(window, 'focus', () => this.tick());
-    window.setTimeout(() => this.tick(), 15000);
+    if (this.firstTick) window.clearTimeout(this.firstTick);
+    this.firstTick = window.setTimeout(() => { this.firstTick = 0; this.tick(); }, FIRST_TICK_MS);
   }
 
   issueOf(text) {
