@@ -206,6 +206,21 @@ test('最近 7 天剩的超过 20 件：不带，整个只说一句；什么都�
   assert.equal(bring, null);
   assert.equal(recentTotal, 21);
   assert.equal(left.total, 21);
+  // 浏览器扩展里用户反馈（10-27）：前天那篇堆了 1187 件，昨天、大前天各剩几件也不带了；现在凑满 20 件为止，那一堆留着
+  const pile = Array.from({ length: 1187 }, (_, i) => `- [ ] 堆 ${i}`).join('\n');
+  const mixed = await planCarry({
+    io: memoryIO({
+      '日记/2026-10-24.md': '### 事项\n- [ ] 昨天 1\n- [ ] 昨天 2\n',
+      '日记/2026-10-23.md': `### 事项\n${pile}\n`,
+      '日记/2026-10-22.md': '### 事项\n- [ ] 大前天\n'
+    }),
+    settings, today, formatDate, parser
+  });
+  const split = splitCarry(mixed);
+  assert.deepEqual(split.bring.days.map((day) => day.path), ['日记/2026-10-24.md']);
+  assert.equal(split.bring.total, 2);
+  assert.deepEqual(split.left.days.map((day) => day.path), ['日记/2026-10-23.md', '日记/2026-10-22.md']);
+  assert.equal(split.left.total, 1188);
   const empty = splitCarry({ days: [], total: 0, onlyYesterday: false });
   assert.deepEqual(empty, { bring: null, left: null, recentTotal: 0 });
 });

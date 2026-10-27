@@ -240,10 +240,19 @@ export function splitCarry(plan, { canBring = true } = {}) {
   const pack = (days) => ({ days, total: sum(days), onlyYesterday: days.length === 1 && days[0].offset === 1 });
   const recent = plan.days.filter((day) => day.offset <= AUTO_DAYS);
   const recentTotal = sum(recent);
-  const bringable = recentTotal > 0 && recentTotal <= AUTO_LIMIT;
-  const leftDays = bringable ? plan.days.filter((day) => day.offset > AUTO_DAYS) : plan.days;
+  // 从昨天往前一天天凑，凑满 20 件为止，哪天放不下就停在那天前面（和浏览器扩展同一条）：
+  // 一篇日记里堆了一千多件，不再挡住昨天那几件；那一篇留着，侧边栏底下那句话说的就是它，点了去它那天
+  const fit = [];
+  let fitTotal = 0;
+  for (const day of recent) {
+    if (fitTotal + day.pending.length > AUTO_LIMIT) break;
+    fit.push(day);
+    fitTotal += day.pending.length;
+  }
+  // 今天别处已经带过（canBring = false）：凑上的那几天也当已经带走了，那句话只说剩下的
+  const leftDays = fitTotal > 0 ? plan.days.filter((day) => !fit.includes(day)) : plan.days;
   return {
-    bring: canBring && bringable ? pack(recent) : null,
+    bring: canBring && fitTotal > 0 ? pack(fit) : null,
     left: sum(leftDays) ? pack(leftDays) : null,
     recentTotal
   };
