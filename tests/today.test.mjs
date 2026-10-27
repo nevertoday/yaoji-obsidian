@@ -4,7 +4,8 @@ import { createRequire } from 'node:module';
 import moment from 'moment';
 import {
   AUTO_DAYS, AUTO_LIMIT, BROUGHT_MARK, splitCarry, appendTodo, ensureSection, hasBroughtMark, isBroughtLine, isTemplatePending, mergeIntoToday,
-  newNoteContent, notePath, planCarry, removeBrought, sectionEndLine, splitPending, takePending, withBroughtMark
+  newNoteContent, notePath, planCarry, removeBrought, sectionEndLine, splitPending, takePending, withBroughtMark,
+  leftCounts, menuRanges, MENU_CONFIRM_OVER,
 } from '../src/today.js';
 
 const require = createRequire(import.meta.url);
@@ -223,4 +224,17 @@ test('最近 7 天剩的超过 20 件：不带，整个只说一句；什么都�
   assert.equal(split.left.total, 1188);
   const empty = splitCarry({ days: [], total: 0, onlyYesterday: false });
   assert.deepEqual(empty, { bring: null, left: null, recentTotal: 0 });
+});
+
+// GitHub 问题 #39 方案 A：侧边栏底下那句点开的小菜单——最近 3 天 / 7 天 / 全部各几件，件数一样的只留范围大的
+test('剩下的数：最近 3 天、7 天、全部；菜单几行去掉一样的', () => {
+  const days = [{ offset: 1, pending: [1, 2] }, { offset: 3, pending: [1, 2, 3, 4] }, { offset: 6, pending: new Array(8) }, { offset: 30, pending: new Array(1174) }];
+  const counts = leftCounts(days);
+  assert.deepEqual([counts[3], counts[7], counts.all, counts.onlyYesterday], [6, 14, 1188, false]);
+  assert.equal(leftCounts([{ offset: 1, pending: [1] }]).onlyYesterday, true);
+  const rows = (value) => menuRanges(value).map((row) => `${row.range}:${row.count}`).join(' ');
+  assert.equal(rows(counts), '3:6 7:14 all:1188');
+  assert.equal(rows({ 3: 1188, 7: 1188, all: 1188 }), 'all:1188');
+  assert.equal(rows({ 3: 0, 7: 5, all: 5 }), 'all:5');
+  assert.equal(MENU_CONFIRM_OVER, 50);
 });

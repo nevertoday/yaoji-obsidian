@@ -233,6 +233,33 @@ export async function planCarry({ io, settings, today, formatDate, parser, maxDa
   return { days, total, onlyYesterday: days.length === 1 && days[0].offset === 1 };
 }
 
+// 侧边栏底下那句「以前还剩 1188 件没做完」点开的小菜单（和浏览器扩展同一条，GitHub 问题 #39 方案 A）：
+// 最近 3 天、最近 7 天、全部各剩几件。days：[{ offset, pending }]，最近的在前
+export function leftCounts(days) {
+  const counts = { 3: 0, 7: 0, all: 0, onlyYesterday: days.length === 1 && days[0].offset === 1 };
+  for (const day of days) {
+    const count = day.pending?.length ?? Number(day.count) ?? 0;
+    if (day.offset <= 3) counts[3] += count;
+    if (day.offset <= 7) counts[7] += count;
+    counts.all += count;
+  }
+  return counts;
+}
+
+// 菜单里的几行：件数一样的只留范围大的那行（三行都是 1188 件时只写「全部」）；0 件的不写
+export function menuRanges(counts) {
+  const rows = [];
+  for (const range of ['all', 7, 3]) {
+    const count = Number(counts?.[range]) || 0;
+    if (!count || rows.some((row) => row.count === count)) continue;
+    rows.unshift({ range, count });
+  }
+  return rows;
+}
+
+// 超过这么多件，菜单里那行先问一次「带来 N 件？再点一下」
+export const MENU_CONFIRM_OVER = 50;
+
 // 分成「自己带的」和「只说一句的」：最近 7 天剩的 20 件以内就带（canBring = 今天还没人带过）；
 // 更早的、或者最近的太多，都留在原来那几天，侧边栏底下说一句
 export function splitCarry(plan, { canBring = true } = {}) {

@@ -131,30 +131,6 @@ export const MESSAGES = {
     de: '{count} von früheren Tagen übernommen', pt: 'Trouxe {count} de dias anteriores', ru: 'Перенесено {count} с прошлых дней',
     ar: 'نُقلت {count} من أيام سابقة', th: 'ยกมาจากวันก่อน ๆ {count} รายการ', vi: 'Đã mang sang {count} việc từ những ngày trước'
   },
-  '昨天剩 {count} 件，太多了没带': {
-    'zh-TW': '昨天剩 {count} 件，太多了沒帶', en: '{count} left from yesterday — too many to bring over',
-    ja: '昨日の残り {count} 件。多すぎるので持ってきていません', ko: '어제 남은 일 {count}개 — 너무 많아서 가져오지 않았어요',
-    es: 'Quedan {count} de ayer; demasiadas para traerlas', fr: '{count} restants d’hier — trop pour les reprendre',
-    de: '{count} von gestern offen – zu viele zum Übernehmen', pt: 'Sobraram {count} de ontem — muitas para trazer',
-    ru: 'Со вчера осталось {count} — слишком много, не перенесено', ar: 'تبقّى {count} من أمس — كثيرة جدًا فلم تُنقل',
-    th: 'เหลือจากเมื่อวาน {count} รายการ มากเกินไปจึงไม่ได้ยกมา', vi: 'Còn {count} việc từ hôm qua — quá nhiều nên chưa mang sang'
-  },
-  '之前剩 {count} 件': {
-    'zh-TW': '之前剩 {count} 件', en: '{count} left from earlier days',
-    ja: '以前の残り {count} 件', ko: '이전에 남은 일 {count}개',
-    es: 'Quedan {count} de días anteriores', fr: '{count} restants des jours précédents',
-    de: '{count} von früheren Tagen offen', pt: 'Sobraram {count} de dias anteriores',
-    ru: 'С прошлых дней осталось {count}', ar: 'تبقّى {count} من أيام سابقة',
-    th: 'เหลือจากวันก่อน ๆ {count} รายการ', vi: 'Còn {count} việc từ những ngày trước'
-  },
-  '之前剩 {count} 件，太多了没带': {
-    'zh-TW': '之前剩 {count} 件，太多了沒帶', en: '{count} left from earlier days — too many to bring over',
-    ja: '以前の残り {count} 件。多すぎるので持ってきていません', ko: '이전에 남은 일 {count}개 — 너무 많아서 가져오지 않았어요',
-    es: 'Quedan {count} de días anteriores; demasiadas para traerlas', fr: '{count} restants des jours précédents — trop pour les reprendre',
-    de: '{count} von früheren Tagen offen – zu viele zum Übernehmen', pt: 'Sobraram {count} de dias anteriores — muitas para trazer',
-    ru: 'С прошлых дней осталось {count} — слишком много, не перенесено', ar: 'تبقّى {count} من أيام سابقة — كثيرة جدًا فلم تُنقل',
-    th: 'เหลือจากวันก่อน ๆ {count} รายการ มากเกินไปจึงไม่ได้ยกมา', vi: 'Còn {count} việc từ những ngày trước — quá nhiều nên chưa mang sang'
-  },
   '去看看': {
     'zh-TW': '去看看', en: 'Take a look', ja: '見に行く', ko: '보러 가기', es: 'Ver', fr: 'Voir', de: 'Ansehen',
     pt: 'Ver', ru: 'Посмотреть', ar: 'عرض', th: 'ไปดู', vi: 'Xem'
@@ -264,7 +240,13 @@ export const MESSAGES = {
     ar: 'لا يمكن للمتصفح الاتصال بهذا المخزن: المنفذ المحلي {port} مستخدم بالفعل (ربما يفتح مخزن آخر Today’s To-dos)',
     th: 'เบราว์เซอร์เชื่อมต่อคลังนี้ไม่ได้: พอร์ตในเครื่อง {port} ถูกใช้อยู่แล้ว (อาจมีคลังอื่นเปิด Today’s To-dos อยู่)',
     vi: 'Trình duyệt không kết nối được với kho này: cổng cục bộ {port} đang được dùng (có thể kho khác đang mở Today’s To-dos)'
-  }
+  },
+  "昨天剩 {count} 件": {"zh-TW": "昨天剩 {count} 件", "en": "{count} left from yesterday", "ja": "昨日の残り {count} 件", "ko": "어제 남은 일 {count}개", "es": "Quedan {count} de ayer", "fr": "{count} restants d’hier", "de": "{count} von gestern offen", "pt": "Sobraram {count} de ontem", "ru": "Со вчера осталось {count}", "ar": "تبقّى {count} من أمس", "th": "เหลือจากเมื่อวาน {count} รายการ", "vi": "Còn {count} việc từ hôm qua"},
+  "以前还剩 {count} 件没做完": {"zh-TW": "以前還剩 {count} 件沒做完", "en": "{count} unfinished from before", "ja": "前の日の未完了 {count} 件", "ko": "이전에 못 끝낸 일 {count}개", "es": "{count} pendientes de antes", "fr": "{count} non terminées d’avant", "de": "{count} offen von früher", "pt": "{count} pendentes de antes", "ru": "С прошлых дней осталось: {count}", "ar": "{count} غير منجزة من قبل", "th": "ค้างจากก่อนหน้า {count} รายการ", "vi": "Còn {count} việc chưa xong từ trước"},
+  "最近 {days} 天 · {count} 件": {"zh-TW": "最近 {days} 天 · {count} 件", "en": "Last {days} days · {count}", "ja": "直近 {days} 日 · {count} 件", "ko": "최근 {days}일 · {count}개", "es": "Últimos {days} días · {count}", "fr": "{days} derniers jours · {count}", "de": "Letzte {days} Tage · {count}", "pt": "Últimos {days} dias · {count}", "ru": "Последние {days} дн. · {count}", "ar": "آخر {days} أيام · {count}", "th": "{days} วันล่าสุด · {count} รายการ", "vi": "{days} ngày gần đây · {count} việc"},
+  "全部 · {count} 件": {"zh-TW": "全部 · {count} 件", "en": "All · {count}", "ja": "すべて · {count} 件", "ko": "전체 · {count}개", "es": "Todo · {count}", "fr": "Tout · {count}", "de": "Alle · {count}", "pt": "Tudo · {count}", "ru": "Все · {count}", "ar": "الكل · {count}", "th": "ทั้งหมด · {count} รายการ", "vi": "Tất cả · {count} việc"},
+  "带来 {count} 件？再点一下": {"zh-TW": "帶來 {count} 件？再點一下", "en": "Bring {count}? Click again", "ja": "{count} 件持ってくる？もう一度クリック", "ko": "{count}개를 가져올까요? 한 번 더 클릭", "es": "¿Traer {count}? Haz clic otra vez", "fr": "Apporter {count} ? Cliquez encore", "de": "{count} übernehmen? Noch mal klicken", "pt": "Trazer {count}? Clique de novo", "ru": "Перенести {count}? Нажмите ещё раз", "ar": "إحضار {count}؟ انقر مرة أخرى", "th": "นำมา {count} รายการ? คลิกอีกครั้ง", "vi": "Mang {count} việc sang? Nhấn lần nữa"},
+  "去 {date} 看看": {"en": "Go to {date}", "zh-TW": "去 {date} 看看", "ja": "{date} を見る", "ko": "{date} 보러 가기", "es": "Ir al {date}", "fr": "Aller au {date}", "de": "Zum {date}", "pt": "Ir para {date}", "ru": "Перейти к {date}", "ar": "انتقل إلى {date}", "th": "ไปดู {date}", "vi": "Xem ngày {date}"}
 };
 
 let current = 'zh';
