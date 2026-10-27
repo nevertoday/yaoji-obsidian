@@ -5,7 +5,7 @@ Keeps today’s to-dos in today’s daily note.
 ![Today’s to-dos in the right sidebar, next to the daily note](docs/screenshot-en.png)
 
 - **Creates today’s note** when the day changes, or adds the to-do heading to the note your daily notes plugin or template just made. Nothing else in the note is touched.
-- **Carries over what you didn’t finish.** Once a day, unfinished to-dos come along automatically, starting from yesterday and going back day by day until 20 are reached (within the last 7 days), with undo. A day that doesn’t fit, and anything older, stays where it is; the sidebar tells you in one line, and clicking it opens that day.
+- **Carries over what you didn’t finish.** Once a day, unfinished to-dos come along automatically, starting from yesterday and going back day by day until 20 are reached (within the last 7 days), with undo. A day that doesn’t fit, and anything older, stays where it is; the sidebar says how many are left in one line. Click it to bring the last 3 days, the last 7 days or everything (with undo), or to open that day.
 - **A “Today” panel in the right sidebar.** Type and press Enter to add, click the box to check, right-click to star or delete (with undo). Hover the date to page through days.
 - **Adds a to-do from anywhere** with the command “Add a to-do”, which you can bind to a hotkey.
 - **Needs no other plugins.** It works without Daily Notes, Periodic Notes, Templater or Local REST API. On first run it reuses your daily notes settings if you have them.
@@ -81,7 +81,7 @@ Source available, all rights reserved: free to install and use for personal use,
 ![侧边栏里的今天，旁边是日记](docs/screenshot-zh.png)
 
 - **自己建好今天的日记**：Obsidian 开着过了零点，或者第二天打开时，建好今天的日记，放好 `### 事项`。已经有日记（日记插件、模板刚建的）就只补这一节，别的不动。
-- **把没做完的带过来**：每天第一次打开时，从昨天往前一天天凑，凑满 20 件为止（只看最近 7 天），自动带到今天，能撤销；放不下的那天和更早的留在原来那几天，侧边栏底下说一句，点了去那一天。
+- **把没做完的带过来**：每天第一次打开时，从昨天往前一天天凑，凑满 20 件为止（只看最近 7 天），自动带到今天，能撤销；放不下的那天和更早的留在原来那几天，侧边栏底下说一句「以前还剩 N 件没做完」；点它可以选带最近 3 天、最近 7 天或全部（能撤销），或者去那一天看看。
 - **侧边栏里的今天**：右侧栏打开「今天」。顶上输入框，回车加一件；点方框勾掉，右键星标、删除（能撤销）；鼠标移到日期上可以翻前后一天。
 - **随时加一件事**：命令面板里「今日待办：添加待办」，可以绑快捷键。
 - **不依赖别的插件**：不用日记插件、Periodic Notes、Templater、Local REST API。第一次打开时如果你已经有日记设置，就直接沿用。
