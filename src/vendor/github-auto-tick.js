@@ -56,17 +56,20 @@
     const skip = new Set(skipPaths.filter(Boolean));
     const seen = new Set();
     const entries = [];
+    // 十几篇一起读（GitHub 问题 #45：以前一篇读完再读下一篇，GitHub 清单要等好几秒），读回来还按日子从近到远认
+    const daysToRead = [];
     for (let offset = includeToday ? 0 : 1; offset <= days; offset += 1) {
       const date = new Date(today);
       date.setDate(date.getDate() - offset);
       const file = tools.formatter.format(date);
-      if (skip.has(file.fullPath)) continue;
-      let content = '';
-      try {
-        content = await tools.api.getFileContent(file.fullPath);
-      } catch {
-        continue; // 那天没有日记
-      }
+      if (!skip.has(file.fullPath)) daysToRead.push({ date, file });
+    }
+    const contents = await Promise.all(daysToRead.map(({ file }) => Promise.resolve()
+      .then(() => tools.api.getFileContent(file.fullPath))
+      .catch(() => null))); // 那天没有日记
+    for (const [index, { date, file }] of daysToRead.entries()) {
+      const content = contents[index];
+      if (typeof content !== 'string') continue;
       const section = tools.parser.extractSection(content, tools.title);
       if (!section) continue;
       const walk = (items) => (items || []).forEach((todo) => {

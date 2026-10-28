@@ -323,6 +323,44 @@
   text-decoration-color: var(--yaoji-muted);
 }
 
+/* 做了几次（扩展的 GitHub 问题 #46 方案 A，照「时钟 › 秒表」的「计次」）：字后面一个小数「×3」，灰的、等宽数字；
+   指上去浅浅一层底，点一下 +1。做完的不划它、也不能再点。Obsidian 自己的按钮样子（底色、阴影、高度）都去掉 */
+.yaoji-text .yaoji-count {
+  display: inline-block;
+  height: auto;
+  margin: 0;
+  margin-inline-start: 6px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  color: var(--yaoji-muted);
+  font: inherit;
+  font-size: 0.92em;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: inherit;
+  vertical-align: baseline;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.yaoji-text .yaoji-count:hover {
+  background: var(--yaoji-hover);
+  color: var(--yaoji-ink);
+}
+
+.yaoji-text .yaoji-count:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.yaoji-text .yaoji-count:disabled:hover {
+  background: none;
+  color: var(--yaoji-muted);
+}
+
 /* 星标：加粗 + 一条墨色的线（和扩展一样）；线在字下面 6px，折两行时底下留出位置，不被裁掉 */
 .yaoji-item.is-star .yaoji-text {
   padding-bottom: 6px;

@@ -7,9 +7,15 @@ import { language, t } from './i18n.js';
 import { MENU_CONFIRM_OVER, addDays, dateKey, editTodo, leftCounts, menuRanges, readTodos, restoreTodo, takeTodo } from './today.js';
 import { ISSUE_URL_RE } from './github.js';
 import G from './vendor/github-issues.js';
+import TodoCount from './vendor/todo-count.js';
 import { Solar } from 'lunar-javascript';
 
 const { ItemView, MarkdownRenderer, Menu, setIcon } = obsidian;
+
+// 输入框里再打一次已经在计次的事：提示「颈椎操 第 4 次」（扩展的 GitHub 问题 #46）
+export function countedMessage(counted) {
+  return t('{text} 第 {count} 次', { text: TodoCount.label(counted.text), count: counted.count });
+}
 
 // 黄道吉日（和扩展一样只在中文界面里说）：值神是吉的那天，标头下面一行「吉 · 金匮」
 function luckyDay(date) {
@@ -72,7 +78,9 @@ export class TodayView extends ItemView {
       const value = this.inputEl.value.trim();
       if (!value) return;
       this.inputEl.value = '';
-      this.plugin.addTodoOn(this.shownDate(), value).catch((error) => {
+      this.plugin.addTodoOn(this.shownDate(), value).then((counted) => {
+        if (counted) this.plugin.notify(countedMessage(counted), [], 2500);
+      }, (error) => {
         console.error('[今日待办] 添加失败', error);
         // 没写进去：字放回输入框，不让它就这么没了
         if (!this.inputEl.value) this.inputEl.value = value;
@@ -206,8 +214,23 @@ export class TodayView extends ItemView {
       const link = badge.createEl('a', { cls: 'yaoji-issue-num', text: `#${issue.number}`, href: issue.url });
       link.addEventListener('click', (event) => { event.preventDefault(); window.open(issue.url); });
     }
-    const shown = String(todo.text || '').replace(ISSUE_URL_RE, '').replace(/[ \t]+$/gm, '');
+    // 做了几次（扩展的 GitHub 问题 #46 方案 A，照「时钟 › 秒表」的「计次」）：「×3」从字里拿出来，
+    // 放成字后面一个小数，点一下 +1；方框还是「做完」
+    const counted = TodoCount.parse(todo.text);
+    const shown = (counted.count ? counted.base : String(todo.text || '')).replace(ISSUE_URL_RE, '').replace(/[ \t]+$/gm, '');
     MarkdownRenderer.render(this.app, shown, text, sourcePath, this).then(() => {
+      if (counted.count) {
+        const host = text.querySelector(':scope > p:last-child') || text;
+        const count = host.createEl('button', { cls: 'yaoji-count', text: `×${counted.count}` });
+        count.disabled = !!todo.checked;
+        count.setAttribute('aria-label', todo.checked ? t('做了 {count} 次', { count: counted.count }) : t('做了 {count} 次，再记一次', { count: counted.count }));
+        if (!todo.checked) count.title = t('再记一次');
+        count.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!todo.checked) this.bump(todo, path, 1, sourcePath);
+        });
+      }
       // 太长的折成两行，点一下展开
       window.requestAnimationFrame(() => {
         if (text.scrollHeight > text.clientHeight + 2) {
@@ -229,6 +252,19 @@ export class TodayView extends ItemView {
         .setTitle(todo.highlighted ? t('取消星标') : t('星标'))
         .setIcon('star')
         .onClick(() => this.change(todo, path, (target) => { target.highlighted = !target.highlighted; }, sourcePath)));
+      // 做了几次：没做完的才有；有次数时写着现在几次，还能「少记一次」
+      if (!todo.checked) {
+        menu.addItem((item) => item
+          .setTitle(counted.count ? `${t('做了一次')} · ${t('现在 {count} 次', { count: counted.count })}` : t('做了一次'))
+          .setIcon('rotate-cw')
+          .onClick(() => this.bump(todo, path, 1, sourcePath)));
+        if (counted.count) {
+          menu.addItem((item) => item
+            .setTitle(t('少记一次'))
+            .setIcon('minus')
+            .onClick(() => this.bump(todo, path, -1, sourcePath)));
+        }
+      }
       // 发到 GitHub（会员）：发过的给「在 GitHub 打开 #42」；登录了、连着 GitHub 才有「发到 GitHub」
       const issue = this.plugin.github?.issueOf(todo.text);
       if (issue) {
@@ -307,6 +343,21 @@ export class TodayView extends ItemView {
       return next;
     });
     if (!ok) this.redraw();
+  }
+
+  // step：+1 做了一次，-1 少记一次（减到 0 就不再计次）；提示里能撤销
+  async bump(todo, path, step, sourcePath = this.plugin.pathFor(this.shownDate())) {
+    const before = String(todo.text || '');
+    const from = TodoCount.parse(before).count;
+    const count = Math.max(0, from + step);
+    if (count === from) return;
+    const after = TodoCount.withCount(before, count);
+    await this.change(todo, path, (item) => { item.text = after; }, sourcePath);
+    const text = TodoCount.label(before);
+    this.plugin.notify(step > 0 ? t('{text} 第 {count} 次', { text, count }) : t('{text} 少记了一次', { text }), [{
+      label: t('撤销'),
+      run: () => this.change({ ...todo, text: after }, path, (item) => { item.text = before; }, sourcePath)
+    }], 4000);
   }
 
   async remove(todo, path, sourcePath = this.plugin.pathFor(this.shownDate())) {

@@ -1,5 +1,6 @@
 // 今天的日记和「带到今天」：只处理文字，不碰 Obsidian。main.js 把读写交进来，测试里换成内存版。
 // 文件里的样子和浏览器扩展一模一样（core/markdown-parser.js 是从扩展拷来的同一份）。
+import TodoCount from './vendor/todo-count.js';
 
 // 今天已经自动带过了：写在今天日记的事项标题下面（Obsidian 注释，阅读时看不见）。
 // 插件和扩展都开着、或者两台电脑都开着时，谁先写下它谁带，另一边看到就不再带。
@@ -159,7 +160,8 @@ export function takePending(content, section, parser) {
   return { pending, content: after };
 }
 
-const textKey = (text) => String(text || '').split('\n').map((line) => line.trim().replace(/\s+/g, ' ')).join('\n').trim();
+// 次数（「颈椎操 ×3」，扩展的 GitHub 问题 #46）不算：带过来的从 0 开始，和今天那件还是同一件
+const textKey = (text) => TodoCount.parse(text).base.split('\n').map((line) => line.trim().replace(/\s+/g, ' ')).join('\n').trim();
 
 // 带来的放到今天最后；今天已经有一模一样没做完的就不再放一条，它带来的子任务合到今天那一条下面（不丢）。
 // record 记下真加进去的是哪几条（撤销时只拿这些）：
@@ -191,7 +193,7 @@ function mergeList(list, moved, depth) {
       continue;
     }
     const skip = list.filter((item) => textKey(item.text) === key).length;
-    const node = normalizeIndent(todo, depth);
+    const node = resetCounts(normalizeIndent(todo, depth));
     list.push(node);
     entries.push({ key, added: true, skip, node });
     added += 1;
@@ -200,6 +202,13 @@ function mergeList(list, moved, depth) {
   const snapshot = (node) => ({ key: textKey(node.text), added: true, skip: 0, children: (node.children || []).map(snapshot) });
   const record = entries.map((e) => (e.added ? { ...snapshot(e.node), skip: e.skip } : e));
   return { added, record };
+}
+
+// 带到今天的从 0 次开始（以前的次数留在那天的日记里）
+function resetCounts(node) {
+  node.text = TodoCount.withCount(node.text, 0);
+  (node.children || []).forEach(resetCounts);
+  return node;
 }
 
 // 往前看：哪几天还有没做完的。只读不写
@@ -344,6 +353,30 @@ export function appendTodo(content, text, section, parser) {
   const next = rewrite(base, section, todos, parser);
   if (next === null) throw new Error('section did not read back');
   return next;
+}
+
+// 加一件事（扩展的 GitHub 问题 #46）：已经在计次、还没做完的同一件（打的是「颈椎操」「颈椎操+1」），不加新的一行，那一行 +1
+// → { content, counted: { text: 那一行原来的字, count: 现在几次 } | null }
+export function countOrAppend(content, text, section, parser) {
+  const value = String(text || '').trim();
+  const found = value ? parser.extractSection(String(content || ''), section) : null;
+  if (found) {
+    const todos = parser.parseTodos(found.content);
+    let hit = null;
+    const walk = (items) => (items || []).some((todo) => {
+      if (!todo.checked && TodoCount.parse(todo.text).count > 0 && TodoCount.sameThing(todo.text, value)) { hit = todo; return true; }
+      return walk(todo.children);
+    });
+    walk(todos);
+    if (hit) {
+      const before = hit.text;
+      const count = TodoCount.parse(before).count + 1;
+      hit.text = TodoCount.withCount(before, count);
+      const next = rewrite(content, section, todos, parser);
+      if (next !== null) return { content: next, counted: { text: before, count } };
+    }
+  }
+  return { content: appendTodo(content, value, section, parser), counted: null };
 }
 
 // 光标停在事项这一节最后一条下面（打开今天时用）：返回行号

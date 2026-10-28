@@ -5,13 +5,13 @@ import * as obsidian from 'obsidian';
 import MarkdownParser from './vendor/markdown-parser.js';
 import { detectLanguage, setLanguage, t } from './i18n.js';
 import { DEFAULT_SETTINGS, YaojiSettingTab, cleanSection, detectDiarySettings, sameAsDiary } from './settings.js';
-import { TodayView, VIEW_ICON, VIEW_TYPE } from './view.js';
+import { TodayView, VIEW_ICON, VIEW_TYPE, countedMessage } from './view.js';
 import { Bridge } from './bridge.js';
 import { hideBroughtMark } from './hide-mark.js';
 import { AUTH_ACTION, MEMBER_BASE, MemberClient } from './member.js';
 import { Github } from './github.js';
 import {
-  AUTO_LIMIT, addDays, leftCounts, splitCarry, appendTodo, dateKey, editTodo, ensureSection, hasBroughtMark, isTemplatePending, mergeIntoToday,
+  AUTO_LIMIT, addDays, leftCounts, splitCarry, countOrAppend, dateKey, editTodo, ensureSection, hasBroughtMark, isTemplatePending, mergeIntoToday,
   newNoteContent, notePath, planCarry, sectionEndLine, undoBrought, withBroughtMark
 } from './today.js';
 
@@ -372,8 +372,8 @@ export default class YaojiTodayPlugin extends Plugin {
     const value = String(text || '').trim();
     if (!value) return;
     try {
-      await this.addTodoOn(this.now(), value);
-      showNotice(t('加上了'), [], 2000);
+      const counted = await this.addTodoOn(this.now(), value);
+      showNotice(counted ? countedMessage(counted) : t('加上了'), [], 2000);
     } catch (error) {
       showNotice(t('写不进今天的日记：{error}', { error: error?.message || error }), [], 8000);
     }
@@ -386,11 +386,16 @@ export default class YaojiTodayPlugin extends Plugin {
       : await this.noteFor(date);
     // Templater 还没渲染完：现在加的会被它覆盖掉，不写，告诉用户
     let pending = false;
+    let counted = null;
     await this.app.vault.process(file, (content) => {
       if (isTemplatePending(content)) { pending = true; return content; }
-      return appendTodo(content, text, this.settings.section, this.parser);
+      // 已经在计次的同一件：那一行 +1，不加新的一行（扩展的 GitHub 问题 #46）
+      const result = countOrAppend(content, text, this.settings.section, this.parser);
+      counted = result.counted;
+      return result.content;
     });
     if (pending) throw new Error('Templater');
+    return counted;
   }
 
   async noteFor(date) {

@@ -5,7 +5,7 @@ import { copyFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const extension = resolve(process.env.YAOJI_EXTENSION_DIR || '../插件-obsidian日记todo');
-const files = ['core/markdown-parser.js', 'core/github-issues.js', 'core/github-auto-tick.js', 'core/todo-plain-text.js'];
+const files = ['core/markdown-parser.js', 'core/github-issues.js', 'core/github-auto-tick.js', 'core/todo-plain-text.js', 'core/todo-count.js'];
 
 const commit = execFileSync('git', ['-C', extension, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const dirty = execFileSync('git', ['-C', extension, 'status', '--porcelain', '--', ...files], { encoding: 'utf8' }).trim();
