@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { countOrAppend, mergeIntoToday } from '../src/today.js';
+import { countOrAppend, editTodo, mergeIntoToday, readTodos } from '../src/today.js';
 import { MESSAGES } from '../src/i18n.js';
 
 // 扩展的 GitHub 问题 #46 方案 A（照「时钟 › 秒表」的「计次」）：一件事做几次，次数写在字后面「颈椎操 ×3」，
@@ -25,6 +25,20 @@ test('输入框里再打一次已经在计次、没做完的那件：不加新�
   assert.equal(water.counted, null);
   assert.match(water.content, /- \[ \] 喝水\n?$/);
   assert.equal(countOrAppend(note, '运动', section, parser).counted, null);
+});
+
+// 对抗测试 2026-10-28：点小数 +1 是改那一行的字，写回时以前按字配不上，那件事下面的说明、图片会跑到上一件下面
+test('点小数 +1：那件事下面没缩进的说明、图片还在它下面；最多 9999', () => {
+  const TodoCount = require('../src/vendor/todo-count.js');
+  const bump = (note, index) => editTodo(note, [index], readTodos(note, section, parser)[index].text, (todo) => {
+    todo.text = TodoCount.withCount(todo.text, Math.min(TodoCount.MAX, TodoCount.parse(todo.text).count + 1));
+  }, section, parser);
+  const note = '### 事项\n- [ ] 写周报\n- [ ] 颈椎操\n每组 10 下\n![[动作.png]]\n- [ ] 喝水\n';
+  assert.equal(bump(bump(note, 1), 1), '### 事项\n- [ ] 写周报\n- [ ] 颈椎操 ×2\n每组 10 下\n![[动作.png]]\n- [ ] 喝水\n');
+  assert.equal(bump('### 事项\n- [ ] 颈椎操 ×9999\n', 0), '### 事项\n- [ ] 颈椎操 ×9999\n');
+  // Windows 换行的日记：这一节最后一件的第二行不丢
+  const crlf = '### 事项\r\n- [ ] 颈椎操\r\n- [ ] 写周报\r\n    周五前交\r\n## 日记\r\n';
+  assert.equal(bump(crlf, 0), crlf.replace('颈椎操', '颈椎操 ×1'));
 });
 
 test('带到今天：次数从 0 开始；今天已经有的同一件（带着次数）不再多一行', () => {

@@ -292,11 +292,18 @@ class MarkdownParser {
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j];
         if (!fenced[j] && MarkdownParser.TODO_LINE.test(next)) break;
-        const contMatch = next.match(/^([ \t]+)(.*)$/);
+        // 行尾的 \r 不算字：Windows 换行的日记里这一节最后一行（后面紧跟下一个标题）还带着它，不去掉就认不出是续行，改一下别的任务这一行就没了
+        const contMatch = next.match(/^([ \t]+)(.*?)\r?$/);
         if (!contMatch || MarkdownParser.indentWidth(contMatch[1]) <= width) break;
         continuationLines.push(contMatch[2]);
         continuationWidths.push(contMatch[2].trim() ? MarkdownParser.indentWidth(contMatch[1]) : -1);
         endLineIndex = j;
+      }
+      // 续行末尾只有空格的行不算这件事的字（留在原处）：不然这件事写回时挪浅一级，下面那行空格就成了它的第二行，星标、次数都认不出来
+      while (continuationLines.length > 0 && !continuationLines[continuationLines.length - 1].trim()) {
+        continuationLines.pop();
+        continuationWidths.pop();
+        endLineIndex -= 1;
       }
       // 续行里更深的缩进（嵌套列表、代码）：显示时不带，写回时按原来的层次补上
       let contIndent = null;
@@ -447,16 +454,77 @@ class MarkdownParser {
     const generatedLines = generated ? generated.split('\n') : [];
     const generatedBlocks = this.collectTodoBlocks(generatedLines);
 
-    // 按任务正文（第几次出现）配对新旧任务；勾选、高亮、拖动都不改变正文
-    const baseIndexByKey = new Map();
-    baseBlocks.forEach((block, index) => {
-      if (!baseIndexByKey.has(block.key)) baseIndexByKey.set(block.key, index);
-    });
+    // 配对新旧任务（勾选、高亮不改正文）。先按顺序对齐（最长公共子序列，只比正文）：
+    // 好几条同名的、其中一条改了字，别的也不会错位配到隔壁那条上
     const matchedBase = new Map();
+    const n = baseBlocks.length;
+    const m = generatedBlocks.length;
+    const same = (i, j) => baseBlocks[i].text === generatedBlocks[j].text;
+    // 前后没变的那几段直接配上，只对中间改过的那一段算（一次只改一两条，几千条的清单也很快）
+    let lo = 0;
+    while (lo < n && lo < m && same(lo, lo)) {
+      matchedBase.set(lo, lo);
+      lo += 1;
+    }
+    let hiBase = n;
+    let hiGenerated = m;
+    while (hiBase > lo && hiGenerated > lo && same(hiBase - 1, hiGenerated - 1)) {
+      hiBase -= 1;
+      hiGenerated -= 1;
+      matchedBase.set(hiBase, hiGenerated);
+    }
+    const rows = hiBase - lo;
+    const width = hiGenerated - lo + 1;
+    if (rows && width > 1 && rows * width <= 4000000) {
+      const table = new Uint16Array((rows + 1) * width);
+      for (let i = rows - 1; i >= 0; i--) {
+        for (let j = width - 2; j >= 0; j--) {
+          table[i * width + j] = same(lo + i, lo + j)
+            ? table[(i + 1) * width + j + 1] + 1
+            : Math.max(table[(i + 1) * width + j], table[i * width + j + 1]);
+        }
+      }
+      for (let i = 0, j = 0; i < rows && j < width - 1;) {
+        if (same(lo + i, lo + j)) {
+          matchedBase.set(lo + i, lo + j);
+          i += 1;
+          j += 1;
+        } else if (table[(i + 1) * width + j] >= table[i * width + j + 1]) i += 1;
+        else j += 1;
+      }
+    }
+    // 拖动换了位置的：剩下的按正文（第几次出现）配，下面的内容跟着它走
+    const claimed = new Set(matchedBase.values());
+    const freeByText = new Map();
     generatedBlocks.forEach((block, index) => {
-      const baseIndex = baseIndexByKey.get(block.key);
-      if (baseIndex !== undefined) matchedBase.set(baseIndex, index);
+      if (claimed.has(index)) return;
+      if (!freeByText.has(block.text)) freeByText.set(block.text, []);
+      freeByText.get(block.text).push(index);
     });
+    baseBlocks.forEach((block, index) => {
+      if (matchedBase.has(index)) return;
+      const index2 = freeByText.get(block.text)?.shift();
+      if (index2 === undefined) return;
+      matchedBase.set(index, index2);
+      claimed.add(index2);
+    });
+    // 改了字的那一条（计次 +1、接上 GitHub 问题地址、改写）：正文配不上。两条配上的任务之间，
+    // 新旧两边空出的条数一样，就按顺序一一当成同一条——它下面的备注、图片跟着它，不跑到上一条下面
+    const anchors = [...matchedBase.entries()].sort((a, b) => a[0] - b[0]);
+    let prevBase = -1;
+    let prevGenerated = -1;
+    for (const [baseIndex, generatedIndex] of [...anchors, [n, m]]) {
+      const gap = baseIndex - prevBase - 1;
+      if (gap > 0 && generatedIndex - prevGenerated - 1 === gap) {
+        for (let k = 1; k <= gap; k++) {
+          if (claimed.has(prevGenerated + k)) continue;
+          matchedBase.set(prevBase + k, prevGenerated + k);
+          claimed.add(prevGenerated + k);
+        }
+      }
+      prevBase = baseIndex;
+      prevGenerated = generatedIndex;
+    }
 
     // 旧任务已删除或改写：它下方的内容交给更前面仍然存在的任务，没有就放回开头
     const extraAfterGenerated = generatedBlocks.map(() => []);
@@ -490,17 +558,13 @@ class MarkdownParser {
   }
 
   /**
-   * 按文档顺序列出任务块（任务行 + 续行）的行号范围和用于配对的 key
-   * key = 任务正文 + 同一正文第几次出现，保证重复的任务也能一一对应
+   * 按文档顺序列出任务块（任务行 + 续行）的行号范围和正文（mergeSectionContent 拿正文配对新旧任务）
    */
   collectTodoBlocks(lines) {
     const blocks = [];
-    const occurrences = new Map();
     const visit = (todo) => {
       const lineCount = String(todo.raw || '').split('\n').length;
-      const seen = occurrences.get(todo.text) || 0;
-      occurrences.set(todo.text, seen + 1);
-      blocks.push({ start: todo.line, end: todo.line + lineCount - 1, key: `${todo.text}\u0000${seen}` });
+      blocks.push({ start: todo.line, end: todo.line + lineCount - 1, text: todo.text });
       (todo.children || []).forEach(visit);
     };
     this.parseLines(lines).forEach(visit);

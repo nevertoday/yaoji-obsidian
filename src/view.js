@@ -343,16 +343,18 @@ export class TodayView extends ItemView {
       return next;
     });
     if (!ok) this.redraw();
+    return ok;
   }
 
   // step：+1 做了一次，-1 少记一次（减到 0 就不再计次）；提示里能撤销
   async bump(todo, path, step, sourcePath = this.plugin.pathFor(this.shownDate())) {
     const before = String(todo.text || '');
     const from = TodoCount.parse(before).count;
-    const count = Math.max(0, from + step);
+    const count = Math.min(TodoCount.MAX, Math.max(0, from + step));
     if (count === from) return;
     const after = TodoCount.withCount(before, count);
-    await this.change(todo, path, (item) => { item.text = after; }, sourcePath);
+    // 没写进去（这一行刚在别处改过）：不说「第 N 次」，清单重画成文件里的样子
+    if (!(await this.change(todo, path, (item) => { item.text = after; }, sourcePath))) return;
     const text = TodoCount.label(before);
     this.plugin.notify(step > 0 ? t('{text} 第 {count} 次', { text, count }) : t('{text} 少记了一次', { text }), [{
       label: t('撤销'),

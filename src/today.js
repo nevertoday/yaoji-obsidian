@@ -370,7 +370,7 @@ export function countOrAppend(content, text, section, parser) {
     walk(todos);
     if (hit) {
       const before = hit.text;
-      const count = TodoCount.parse(before).count + 1;
+      const count = Math.min(TodoCount.MAX, TodoCount.parse(before).count + 1);
       hit.text = TodoCount.withCount(before, count);
       const next = rewrite(content, section, todos, parser);
       if (next !== null) return { content: next, counted: { text: before, count } };

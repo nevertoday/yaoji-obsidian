@@ -8,7 +8,8 @@
 (function initTodoCount(globalScope) {
   'use strict';
 
-  // 第一行末尾、前面是空格（或什么都没有）的「×数字」
+  // 第一行末尾、前面是空格（或什么都没有）的「×数字」，最多 4 位
+  const MAX = 9999;
   const MARK = /(^|[ \t])×(\d{1,4})[ \t]*$/;
 
   function split(text) {
@@ -29,10 +30,12 @@
   // 把次数改成 count（0 = 拿掉次数）
   function withCount(text, count) {
     const { base } = parse(text);
-    const n = Math.max(0, Math.floor(Number(count) || 0));
+    // 最多 MAX：再多读不回来（「×10000」不认，下一次就成了「×10000 ×1」）
+    const n = Math.min(MAX, Math.max(0, Math.floor(Number(count) || 0)));
     if (!n) return base;
     const [first, rest] = split(base);
-    return `${first.replace(/[ \t]+$/, '')} ×${n}${rest}`;
+    const head = first.replace(/[ \t]+$/, '');
+    return `${head ? `${head} ` : ''}×${n}${rest}`;
   }
 
   // 输入框里打的「颈椎操」「颈椎操+1」「颈椎操 +2」「颈椎操 ×3」都算「颈椎操」
@@ -54,7 +57,7 @@
     return plain.length > max ? `${plain.slice(0, max - 1)}…` : plain;
   }
 
-  const api = { parse, withCount, inputBase, sameThing, label };
+  const api = { MAX, parse, withCount, inputBase, sameThing, label };
   globalScope.TodoCount = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window);
