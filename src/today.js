@@ -432,7 +432,35 @@ export function takeTodo(content, path, expectText, section, parser) {
   const [todo] = list.splice(index, 1);
   const next = rewrite(content, section, todos, parser);
   if (next === null) return null;
-  return { content: next, removed: { todo, path: [...path], parentText: parent ? parent.text : null } };
+  return { content: next, removed: { todo, path: [...path], parentText: parent ? parent.text : null, notes: notesUnder(found.content, todo, todos) } };
+}
+
+const rawLength = (todo) => String(todo.raw || '').split('\n').length;
+
+// 这件事和它的子任务，按在文件里的先后
+function subtree(todo) {
+  const nodes = [];
+  const visit = (node) => { nodes.push(node); (node.children || []).forEach(visit); };
+  visit(todo);
+  return nodes.sort((a, b) => a.line - b.line);
+}
+
+// 这件事（连子任务）最后一行在第几行
+function lastLine(todo) {
+  return Math.max(...subtree(todo).map((node) => node.line + rawLength(node) - 1));
+}
+
+// 删掉的那件（和每个子任务）下面没缩进的说明、图片，到下一件之前：删掉以后它们留在原处、归了上一件，
+// 撤销时要跟着放回来。按子任务分开记：[[这件下面的], [第一个子任务下面的], …]
+function notesUnder(sectionContent, todo, rest) {
+  const lines = String(sectionContent).split('\n');
+  const end = lastLine(todo);
+  const after = [];
+  const walk = (list) => (list || []).forEach((node) => { if (node.line > end) after.push(node.line); walk(node.children); });
+  walk(rest);
+  const stop = after.length ? Math.min(...after) : lines.length;
+  const nodes = subtree(todo);
+  return nodes.map((node, k) => lines.slice(node.line + rawLength(node), k + 1 < nodes.length ? nodes[k + 1].line : stop));
 }
 
 // 撤销删除（这期间文件又改过）：父任务还在（字对得上）就放回它下面原来的位置，不在就放到最后；子任务、勾选都在
@@ -442,15 +470,90 @@ export function restoreTodo(content, removed, section, parser) {
   const todos = parser.parseTodos(found.content);
   const { todo, path, parentText } = removed;
   const parent = path.length > 1 ? todoAt(todos, path.slice(0, -1)) : null;
+  let placed;
   if (parent && parent.text === parentText) {
     parent.children = parent.children || [];
-    parent.children.splice(Math.min(path[path.length - 1], parent.children.length), 0, normalizeIndent(todo, path.length - 1));
+    const at = Math.min(path[path.length - 1], parent.children.length);
+    parent.children.splice(at, 0, normalizeIndent(todo, path.length - 1));
+    placed = [...path.slice(0, -1), at];
   } else if (path.length === 1) {
-    todos.splice(Math.min(path[0], todos.length), 0, normalizeIndent(todo, 0));
+    const at = Math.min(path[0], todos.length);
+    todos.splice(at, 0, normalizeIndent(todo, 0));
+    placed = [at];
   } else {
     todos.push(normalizeIndent(todo, 0));
+    placed = [todos.length - 1];
   }
-  return rewrite(base, section, todos, parser) ?? content;
+  const next = rewrite(base, section, todos, parser);
+  if (next === null) return content;
+  // 放回原来那一层的：每一行照删掉前的原样写（Tab、几个空格都不变）
+  const exact = placed.length === path.length ? rawBack(next, placed, todo, section, parser) : next;
+  return notesBack(exact, placed, removed.notes, section, parser);
+}
+
+const shapeOf = (text, section, parser) => JSON.stringify(readTodos(text, section, parser), ['checked', 'text', 'highlighted', 'children']);
+
+function rawBack(content, path, removed, section, parser) {
+  const found = parser.extractSection(content, section);
+  const placed = found ? todoAt(parser.parseTodos(found.content), path) : null;
+  if (!placed) return content;
+  const swaps = [];
+  const pair = (now, before) => {
+    if (typeof before?.raw !== 'string' || now.text !== before.text || (now.children || []).length !== (before.children || []).length) return false;
+    swaps.push([now, before.raw.split('\n')]);
+    return (now.children || []).every((child, i) => pair(child, before.children[i]));
+  };
+  if (!pair(placed, removed)) return content;
+  const lines = content.split('\n');
+  const offset = found.startLine + 1;
+  // 从下往上换，前面的行号不变
+  for (const [now, raw] of swaps.sort((a, b) => b[0].line - a[0].line)) {
+    const at = offset + now.line;
+    const count = String(now.raw || '').split('\n').length;
+    const cr = lines[at].endsWith('\r') ? '\r' : '';
+    lines.splice(at, count, ...raw.map((line) => line + cr));
+  }
+  const next = lines.join('\n');
+  return shapeOf(next, section, parser) === shapeOf(content, section, parser) ? next : content;
+}
+
+// 撤销删除：删掉时它下面的说明还紧挨在放回来的这件上面，就挪回各自那一件下面（原来的样子）；
+// 不是紧挨着、或者挪了读出来不一样，就不动
+function notesBack(content, path, groups, section, parser) {
+  const notes = Array.isArray(groups?.[0]) ? groups : [groups || []];
+  if (!notes.flat().length) return content;
+  const found = parser.extractSection(content, section);
+  const todos = found ? parser.parseTodos(found.content) : [];
+  const todo = todoAt(todos, path);
+  if (!todo) return content;
+  const lines = content.split('\n');
+  const offset = found.startLine + 1;
+  const start = offset + todo.line;
+  const end = offset + lastLine(todo);
+  const nodes = subtree(todo);
+  // 这一节最后的空行写回时固定留在最后，不跟着这件：再试一次去掉末尾空行的
+  const trimmed = notes.map((group) => [...group]);
+  for (let k = trimmed.length - 1; k >= 0; k--) {
+    while (trimmed[k].length && !trimmed[k][trimmed[k].length - 1].trim()) trimmed[k].pop();
+    if (trimmed[k].length) break;
+  }
+  for (const each of [notes, trimmed]) {
+    const run = each.flat();
+    const from = start - run.length;
+    const bare = (line) => String(line).replace(/\r$/, '');
+    if (!run.length || from < offset || run.some((line, i) => bare(lines[from + i]) !== bare(line))) continue;
+    // 挪的是文件里现在的那几行（行尾 \r 跟着文件走）
+    const found2 = lines.slice(from, start);
+    let taken = 0;
+    const groupsNow = each.map((group) => { taken += group.length; return found2.slice(taken - group.length, taken); });
+    const rebuilt = nodes.length === each.length
+      ? nodes.flatMap((node, k) => [...lines.slice(offset + node.line, offset + node.line + rawLength(node)), ...groupsNow[k]])
+      : [...lines.slice(start, end + 1), ...found2];
+    lines.splice(from, end + 1 - from, ...rebuilt);
+    const moved = lines.join('\n');
+    return shapeOf(moved, section, parser) === shapeOf(content, section, parser) ? moved : content;
+  }
+  return content;
 }
 
 // 一天的事项（树）。没有这一节返回空

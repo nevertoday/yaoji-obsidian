@@ -147,3 +147,17 @@ test('Windows 换行的日记：加记号、加事项这一节都还是 \\r\\n',
   assert.equal(appendTodo(`${S}\r\n- [ ] a\r\n`, 'b', S, parser), `${S}\r\n- [ ] a\r\n- [ ] b\r\n`);
   assert.deepEqual(readTodos(`${S}\r\n- [ ] a\r\n`, S, parser).map((t) => t.text), ['a']);
 });
+
+// 对抗测试 2026-10-28：删除后这篇又改过再撤销，删掉那件下面的说明、图片跟着回到它下面（子任务下面的各回各的），每行照原样（Tab、几个空格）
+test('删除后又改过再撤销：说明回到那件下面，一行一行照原样', () => {
+  for (const [note, path, text] of [
+    [`${S}\n- [ ] 写周报\n- [ ] 颈椎操\n每组 10 下\n![[动作.png]]\n- [ ] 喝水\n`, [1], '颈椎操'],
+    [`${S}\n- [ ] 颈椎操\n说明\n\n- [ ] 喝水\n`, [0], '颈椎操'],
+    [`${S}\n- [ ] 喝水\n- [ ] 装修\n总的说明\n\t- [ ] 问报价\n报价的说明\n\t\t第二行用 Tab\n- [ ] 买菜\n`, [1], '装修'],
+    [`${S}\r\n- [ ] 喝水\r\n- [ ] 颈椎操\r\n说明\r\n## 后面\r\n`, [1], '颈椎操']
+  ]) {
+    const taken = takeTodo(note, path, text, S, parser);
+    const back = restoreTodo(appendTodo(taken.content, '别处加的', S, parser), taken.removed, S, parser);
+    assert.equal(back, appendTodo(note, '别处加的', S, parser));
+  }
+});

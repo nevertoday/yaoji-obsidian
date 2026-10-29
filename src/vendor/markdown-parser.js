@@ -541,20 +541,75 @@ class MarkdownParser {
     });
 
     const unit = MarkdownParser.detectIndentUnit(baseLines);
-    const output = [...preamble];
-    generatedBlocks.forEach((block, index) => {
-      const taskLeading = generatedLines[block.start].match(/^ */)[0].length;
-      for (let i = block.start; i <= block.end; i++) {
-        output.push(MarkdownParser.reindentLine(generatedLines[i], unit, i === block.start ? Infinity : taskLeading + 4));
+    const baseOf = new Map([...matchedBase].map(([baseIndex, generatedIndex]) => [generatedIndex, baseIndex]));
+    // keep：照原来的缩进写——层级没变的任务用它原来的缩进（一级任务写成 8 个空格、第二行用 Tab 的，都原样留着），
+    // 新加的、换了层级的用旁边同一层那件的缩进，没有就是上一级的缩进再多一级。不然任务挪浅了，
+    // 它下面一行没缩进够的说明会变成它的第二行
+    const leadOf = new Array(m).fill(null);
+    const blockAt = new Map(generatedBlocks.map((block, index) => [block.start, index]));
+    const step = unit === '\t' ? '\t' : unit;
+    const assign = (list, parentLead) => {
+      const indexes = list.map((todo) => blockAt.get(todo.line));
+      indexes.forEach((index) => {
+        const old = baseOf.has(index) ? baseBlocks[baseOf.get(index)] : null;
+        if (old && old.indent === generatedBlocks[index].indent) leadOf[index] = baseLines[old.start].match(/^[ \t]*/)[0];
+      });
+      indexes.forEach((index, k) => {
+        if (leadOf[index] === null) {
+          const before = indexes.slice(0, k).reverse().find((i) => leadOf[i] !== null);
+          const after = indexes.slice(k + 1).find((i) => leadOf[i] !== null);
+          const near = before ?? after;
+          leadOf[index] = near !== undefined ? leadOf[near] : (parentLead === null ? '' : parentLead + step);
+        }
+        assign(list[k].children, leadOf[index]);
+      });
+    };
+    assign(this.parseLines(generatedLines), null);
+    const build = (keep) => {
+      const output = [...preamble];
+      generatedBlocks.forEach((block, index) => {
+        const taskLeading = generatedLines[block.start].match(/^ */)[0].length;
+        if (keep) {
+          const old = baseOf.has(index) ? baseBlocks[baseOf.get(index)] : null;
+          const lead = leadOf[index];
+          output.push(lead + generatedLines[block.start].slice(taskLeading));
+          // 第二行起：没改的那几行整行照抄（只改了第一行的次数、问题地址时，下面一行都不动）
+          const before = old ? String(old.text).split('\n') : [];
+          const now = String(block.text).split('\n');
+          const sameCount = old && old.indent === block.indent && old.end - old.start === block.end - block.start;
+          for (let i = 1; i <= block.end - block.start; i++) {
+            output.push(sameCount && before[i] === now[i]
+              ? baseLines[old.start + i]
+              : lead + MarkdownParser.reindentLine(generatedLines[block.start + i].slice(taskLeading), unit, 4));
+          }
+        } else {
+          for (let i = block.start; i <= block.end; i++) {
+            output.push(MarkdownParser.reindentLine(generatedLines[i], unit, i === block.start ? Infinity : taskLeading + 4));
+          }
+        }
+        output.push(...extraAfterGenerated[index]);
+      });
+      // 生成内容里没有任务时（例如全部删除）也保留空行结构，但不叠加多余空行
+      const tail = [...epilogue];
+      if (generatedBlocks.length === 0 && output.length > 0 && tail.length > 0 && !output[output.length - 1].trim()) {
+        tail.shift();
       }
-      output.push(...extraAfterGenerated[index]);
-    });
-    // 生成内容里没有任务时（例如全部删除）也保留空行结构，但不叠加多余空行
-    if (generatedBlocks.length === 0 && output.length > 0 && epilogue.length > 0 && !output[output.length - 1].trim()) {
-      epilogue.shift();
-    }
-    output.push(...epilogue);
-    return output.join('\n');
+      return [...output, ...tail];
+    };
+    // 照原来缩进写出来的，读回去要和要写的任务一模一样（层级、勾、星标、字）；对不上（比如新加的子任务
+    // 挂在缩进很怪的任务下面）就整节按统一的缩进写
+    const shape = (lines) => {
+      const out = [];
+      const visit = (todo) => {
+        out.push([todo.indent, todo.checked, todo.highlighted, todo.text].join('\u0001'));
+        todo.children.forEach(visit);
+      };
+      this.parseLines(lines).forEach(visit);
+      return out.join('\u0000');
+    };
+    const kept = build(true);
+    if (shape(kept) === shape(generatedLines)) return kept.join('\n');
+    return build(false).join('\n');
   }
 
   /**
@@ -564,7 +619,7 @@ class MarkdownParser {
     const blocks = [];
     const visit = (todo) => {
       const lineCount = String(todo.raw || '').split('\n').length;
-      blocks.push({ start: todo.line, end: todo.line + lineCount - 1, text: todo.text });
+      blocks.push({ start: todo.line, end: todo.line + lineCount - 1, text: todo.text, indent: todo.indent });
       (todo.children || []).forEach(visit);
     };
     this.parseLines(lines).forEach(visit);
