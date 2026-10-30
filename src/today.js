@@ -355,6 +355,22 @@ export function appendTodo(content, text, section, parser) {
   return next;
 }
 
+// 加一件新写的事：放在最上面（没做完的星标后面），和浏览器扩展同一条——今天常带着上千件以前的事，
+// 新写的接在最后就找不到了（用户 2026-10-30：今天写的要摆在上面）
+export function addTodoOnTop(content, text, section, parser) {
+  const value = String(text || '').trim();
+  const base = ensureSection(content, section, parser);
+  if (!value) return base;
+  const found = parser.extractSection(base, section);
+  const todos = parser.parseTodos(found.content);
+  let index = 0;
+  while (index < todos.length && todos[index].highlighted === true && todos[index].checked !== true) index += 1;
+  todos.splice(index, 0, { id: parser.generateId(), checked: false, text: value, highlighted: false, indent: 0, children: [] });
+  const next = rewrite(base, section, todos, parser);
+  if (next === null) throw new Error('section did not read back');
+  return next;
+}
+
 // 加一件事（扩展的 GitHub 问题 #46）：已经在计次、还没做完的同一件（打的是「颈椎操」「颈椎操+1」），不加新的一行，那一行 +1
 // → { content, counted: { text: 那一行原来的字, count: 现在几次 } | null }
 export function countOrAppend(content, text, section, parser) {
@@ -376,7 +392,7 @@ export function countOrAppend(content, text, section, parser) {
       if (next !== null) return { content: next, counted: { text: before, count } };
     }
   }
-  return { content: appendTodo(content, value, section, parser), counted: null };
+  return { content: addTodoOnTop(content, value, section, parser), counted: null };
 }
 
 // 光标停在事项这一节最后一条下面（打开今天时用）：返回行号

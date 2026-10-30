@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { countOrAppend, editTodo, mergeIntoToday, readTodos } from '../src/today.js';
+import { addTodoOnTop, countOrAppend, editTodo, mergeIntoToday, readTodos } from '../src/today.js';
 import { MESSAGES } from '../src/i18n.js';
 
 // 扩展的 GitHub 问题 #46 方案 A（照「时钟 › 秒表」的「计次」）：一件事做几次，次数写在字后面「颈椎操 ×3」，
@@ -23,7 +23,7 @@ test('输入框里再打一次已经在计次、没做完的那件：不加新�
   // 做完了的、没在计次的：照常加一行
   const water = countOrAppend(note, '喝水', section, parser);
   assert.equal(water.counted, null);
-  assert.match(water.content, /- \[ \] 喝水\n?$/);
+  assert.match(water.content, /^### 事项\n- \[ \] 喝水\n/);
   assert.equal(countOrAppend(note, '运动', section, parser).counted, null);
 });
 
@@ -64,4 +64,12 @@ test('新加的字 13 种语言都有', () => {
   for (const key of ['做了一次', '少记一次', '现在 {count} 次', '做了 {count} 次', '做了 {count} 次，再记一次', '再记一次', '{text} 第 {count} 次', '{text} 少记了一次']) {
     assert.equal(Object.keys(MESSAGES[key] || {}).length, 12, key);
   }
+});
+
+test('新写的一件放在最上面（没做完的星标后面），不接在以前带来的一大堆后面', () => {
+  const S = '### 事项';
+  const note = `${S}\n- [ ] ==置顶的==\n- [x] ==做完的星标==\n- [ ] 以前的 1\n- [ ] 以前的 2\n`;
+  assert.equal(addTodoOnTop(note, '今天写的', S, parser), `${S}\n- [ ] ==置顶的==\n- [ ] 今天写的\n- [x] ==做完的星标==\n- [ ] 以前的 1\n- [ ] 以前的 2\n`);
+  assert.equal(countOrAppend(`${S}\n- [ ] 以前的\n`, '新的', S, parser).content, `${S}\n- [ ] 新的\n- [ ] 以前的\n`);
+  assert.equal(addTodoOnTop('# 今天\n', '回邮件', S, parser), '# 今天\n\n### 事项\n- [ ] 回邮件');
 });

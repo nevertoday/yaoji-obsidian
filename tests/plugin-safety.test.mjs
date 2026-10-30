@@ -152,7 +152,7 @@ test('带来以后改了今天再撤销：今天自己的同名待办和子任�
   await plugin.addTodo('顺手加一件');
   undo.click();
   await sleep(20);
-  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n%%yaoji:brought%%\n- [ ] 写周报\n    - [ ] 我今天写的子任务：联系财务\n- [ ] 顺手加一件\n`);
+  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n%%yaoji:brought%%\n- [ ] 顺手加一件\n- [ ] 写周报\n    - [ ] 我今天写的子任务：联系财务\n`);
   assert.equal(vault.store.get('日记/2026-10-24.md'), `${S}\n- [ ] 写周报\n`);
 });
 
@@ -248,7 +248,7 @@ test('侧边栏删除带子任务的一件，再改别的，再撤销：整块�
   await plugin.addTodo('回邮件');
   firstUndo.click();
   await sleep(20);
-  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n- [ ] 旅行准备\n    - [ ] 订酒店 1000 元以内\n    - [x] 买机票\n- [ ] 买菜\n- [ ] 回邮件\n`);
+  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n- [ ] 旅行准备\n    - [ ] 订酒店 1000 元以内\n    - [x] 买机票\n- [ ] 回邮件\n- [ ] 买菜\n`);
 });
 
 test('过了零点还没重画：点的是昨天画出来的那一行，就改昨天那篇', async () => {
