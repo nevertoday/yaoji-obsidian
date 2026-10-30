@@ -139,26 +139,26 @@ test('今天已经有同名的：昨天这件的子任务带过来，不丢', as
     '日记/2026-10-24.md': `${S}\n- [ ] 写周报\n    - [ ] 画图\n    - [ ] 找老板签字\n`,
     '日记/2026-10-25.md': `${S}\n- [ ] 写周报\n`
   });
-  await plugin.ensureToday({ carry: true });
-  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n%%yaoji:brought%%\n- [ ] 写周报\n    - [ ] 画图\n    - [ ] 找老板签字\n`);
+  await plugin.carryNow();
+  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n- [ ] 写周报\n    - [ ] 画图\n    - [ ] 找老板签字\n`);
   assert.equal(vault.store.get('日记/2026-10-24.md'), `${S}\n`);
 });
 
 test('带来以后改了今天再撤销：今天自己的同名待办和子任务都在', async () => {
   const today = `${S}\n- [ ] 写周报\n    - [ ] 我今天写的子任务：联系财务\n`;
   const { plugin, vault } = await makePlugin({ '日记/2026-10-24.md': `${S}\n- [ ] 写周报\n`, '日记/2026-10-25.md': today });
-  await plugin.ensureToday({ carry: true });
+  await plugin.carryNow();
   const undo = undoButton();
   await plugin.addTodo('顺手加一件');
   undo.click();
   await sleep(20);
-  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n%%yaoji:brought%%\n- [ ] 顺手加一件\n- [ ] 写周报\n    - [ ] 我今天写的子任务：联系财务\n`);
+  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n- [ ] 顺手加一件\n- [ ] 写周报\n    - [ ] 我今天写的子任务：联系财务\n`);
   assert.equal(vault.store.get('日记/2026-10-24.md'), `${S}\n- [ ] 写周报\n`);
 });
 
 test('带来以后在带来的那件下面加了子任务再撤销：新加的子任务不丢', async () => {
   const { plugin, vault } = await makePlugin({ '日记/2026-10-24.md': `${S}\n- [ ] 装修\n` });
-  await plugin.ensureToday({ carry: true });
+  await plugin.carryNow();
   const path = '日记/2026-10-25.md';
   vault.store.set(path, vault.store.get(path).replace('- [ ] 装修', '- [ ] 装修\n    - [ ] 问三家报价（刚写的）'));
   undoButton().click();
@@ -177,9 +177,9 @@ test('Templater 等了还没渲染完：不带、不加，什么都不写', asyn
   await plugin.addTodo('想加的一件');
   assert.equal(vault.store.get('日记/2026-10-25.md'), raw);
   assert.match(messages().join('\n'), /写不进今天的日记/);
-  // Templater 写完以后照常带
+  // Templater 写完以后照常能带
   vault.store.set('日记/2026-10-25.md', `开心\n${S}\n`);
-  await plugin.ensureToday({ carry: true });
+  await plugin.carryNow();
   assert.match(vault.store.get('日记/2026-10-25.md'), /- \[ \] 交水费/);
 });
 
@@ -264,4 +264,18 @@ test('过了零点还没重画：点的是昨天画出来的那一行，就改�
   assert.equal(vault.store.get('日记/2026-10-25.md'), todayNote);
   assert.equal(vault.store.get('日记/2026-10-24.md'), `${S}\n- [ ] 打电话\n`);
   setClock(new Date(2026, 9, 25, 9));
+});
+
+// 2026-10-31 方案 A（和浏览器扩展同一条规矩）：打开今天不自己带，只数一数；侧边栏底下一行「以前还有 N 件没做完　全部带来」
+test('打开今天不自己带：以前的照旧留着，只记下还有几件（一件也不带，一千多件也一样）', async () => {
+  const { plugin, vault } = await makePlugin({ '日记/2026-10-24.md': `${S}\n- [ ] 交水费\n- [ ] 买菜\n`, '日记/2026-10-25.md': `${S}\n- [ ] 今天写的\n` });
+  await plugin.ensureToday({ carry: true });
+  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n- [ ] 今天写的\n`);
+  assert.equal(vault.store.get('日记/2026-10-24.md'), `${S}\n- [ ] 交水费\n- [ ] 买菜\n`);
+  assert.equal(plugin.leftOver.total, 2);
+  assert.deepEqual(messages(), []);
+  // 点「全部带来」：都到今天（排在今天写的下面），那一行没了
+  await plugin.carryNow();
+  assert.equal(vault.store.get('日记/2026-10-25.md'), `${S}\n- [ ] 今天写的\n- [ ] 交水费\n- [ ] 买菜\n`);
+  assert.equal(plugin.leftOver, null);
 });

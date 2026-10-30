@@ -4,7 +4,7 @@
 // 全按日记文件画：点方框、星标、删除都是改文件，文件一变（这里改的、在笔记里改的、手机同步来的）就重画。
 import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
-import { MENU_CONFIRM_OVER, addDays, dateKey, editTodo, leftCounts, menuRanges, readTodos, restoreTodo, takeTodo } from './today.js';
+import { addDays, dateKey, editTodo, readTodos, restoreTodo, takeTodo } from './today.js';
 import { ISSUE_URL_RE } from './github.js';
 import G from './vendor/github-issues.js';
 import TodoCount from './vendor/todo-count.js';
@@ -289,9 +289,8 @@ export class TodayView extends ItemView {
     });
   }
 
-  // 「以前还剩 1188 件没做完」（只有昨天剩的才说「昨天剩 5 件」）：只在看今天、而且以前还有没做完的时才有。
-  // 点了弹一个小菜单（GitHub 问题 #39 方案 A，和浏览器扩展一样）：最近 3 天 · 6 件 / 最近 7 天 · 14 件 / 全部 · 1188 件，
-  // 点一行就带到今天（能撤销）；超过 50 件的那行先变成「带来 1188 件？再点一下」；最下面「去 10/27 看看」
+  // 「以前还有 1168 件没做完　全部带来」（2026-10-31 方案 A，和浏览器扩展一样）：只在看今天、而且以前还有没做完的时才有；
+  // 点「全部带来」以前所有没做完的都带到今天（能撤销），不分几天、没有菜单
   drawLeft() {
     const left = this.leftEl;
     left.empty();
@@ -299,37 +298,19 @@ export class TodayView extends ItemView {
     const show = !this.date && note && note.dateKey === dateKey(this.plugin.now());
     left.toggleClass('is-hidden', !show);
     if (!show) return;
-    const counts = note.counts || leftCounts([]);
-    const message = counts.onlyYesterday ? t('昨天剩 {count} 件', { count: '\u0000' }) : t('以前还剩 {count} 件没做完', { count: '\u0000' });
-    const [before, after = ''] = message.split('\u0000');
-    const link = left.createEl('button', { cls: 'yaoji-left-link' });
-    link.setAttribute('aria-haspopup', 'menu');
-    // 按钮是 flex，字要包在一个 span 里，数字两边的空格才不会被吃掉
-    const label = link.createSpan();
+    const [before, after = ''] = t('以前还有 {count} 件没做完', { count: '\u0000' }).split('\u0000');
+    // 字要包在一个 span 里，数字两边的空格才不会被吃掉
+    const label = left.createSpan({ cls: 'yaoji-left-text' });
     label.append(before);
-    label.createEl('b', { text: String(counts.all || note.total) });
+    label.createEl('b', { text: String(note.total) });
     label.append(after);
-    link.addEventListener('click', (event) => this.openLeftMenu(event, note));
+    const bring = left.createEl('button', { cls: 'yaoji-left-link', text: t('全部带来') });
+    bring.addEventListener('click', async () => {
+      bring.disabled = true;
+      try { await this.plugin.carryNow(); } finally { bring.disabled = false; }
+    });
   }
 
-  openLeftMenu(event, note, armed = '') {
-    const menu = new Menu();
-    for (const { range, count } of menuRanges(note.counts)) {
-      const key = String(range);
-      const ask = count > MENU_CONFIRM_OVER && armed !== key;
-      const name = range === 'all' ? t('全部 · {count} 件', { count }) : t('最近 {days} 天 · {count} 件', { days: range, count });
-      menu.addItem((item) => item
-        .setTitle(armed === key ? t('带来 {count} 件？再点一下', { count }) : name)
-        .setIcon(range === 'all' ? 'history' : 'calendar')
-        .onClick(() => (ask ? setTimeout(() => this.openLeftMenu(event, note, key), 0) : this.plugin.carryRange(range))));
-    }
-    menu.addSeparator();
-    menu.addItem((item) => item
-      .setTitle(t('去 {date} 看看', { date: `${note.date.getMonth() + 1}/${note.date.getDate()}` }))
-      .setIcon('eye')
-      .onClick(() => this.goTo(note.date)));
-    menu.showAtMouseEvent(event);
-  }
 
   // sourcePath：这一行是从哪篇日记画出来的。过了零点还没重画时，点的是昨天那篇的行，就只改昨天那篇
   async change(todo, path, apply, sourcePath = this.plugin.pathFor(this.shownDate())) {

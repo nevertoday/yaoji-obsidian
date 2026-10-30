@@ -11,8 +11,8 @@ import { hideBroughtMark } from './hide-mark.js';
 import { AUTH_ACTION, MEMBER_BASE, MemberClient } from './member.js';
 import { Github } from './github.js';
 import {
-  AUTO_LIMIT, addDays, leftCounts, splitCarry, countOrAppend, dateKey, editTodo, ensureSection, hasBroughtMark, isTemplatePending, mergeIntoToday,
-  newNoteContent, notePath, planCarry, sectionEndLine, undoBrought, withBroughtMark
+  addDays, countOrAppend, dateKey, editTodo, ensureSection, isTemplatePending, mergeIntoToday,
+  newNoteContent, notePath, planCarry, sectionEndLine, undoBrought
 } from './today.js';
 
 const { Modal, Notice, Plugin, TFile, moment, normalizePath } = obsidian;
@@ -212,40 +212,22 @@ export default class YaojiTodayPlugin extends Plugin {
     return file;
   }
 
+  // 打开今天时不再自己带（2026-10-31 用户定的方案 A，和浏览器扩展同一条规矩）：只数一数以前还有几件没做完，
+  // 侧边栏底下那一行「以前还有 N 件没做完　全部带来」说它们；点了才带，全部带
   async autoCarry(file, today) {
-    const marked = hasBroughtMark(await this.app.vault.read(file));
     const plan = await planCarry({
-      io: this.io(), settings: this.settings, today, parser: this.parser,
+      io: this.io(), settings: this.settings, today, parser: this.parser, all: true,
       formatDate: (d, p) => this.formatDate(d, p)
     });
-    const { bring, left, recentTotal } = splitCarry(plan, { canBring: !marked });
-    // 没带的：侧边栏底下那一句。今天已经带过（重开 Obsidian）也照样显示，只是不再提示
-    this.setLeftOver(left?.days || [], today);
-    // 只剩 7 天以前的：侧边栏那一句就够了，不在今天记「带过了」，也不弹提示（每天弹一次是打扰）
-    if (marked || (!bring && recentTotal <= AUTO_LIMIT)) return;
-
-    // 先在今天写下「带过了」，写下的那一方才带（另一台电脑、浏览器扩展看到就不带）
-    let claimed = false;
-    await this.app.vault.process(file, (text) => {
-      if (hasBroughtMark(text)) return text;
-      claimed = true;
-      return withBroughtMark(text, this.settings.section, this.parser);
-    });
-    if (!claimed) return;
-
-    if (!bring) {
-      const message = left.onlyYesterday ? t('昨天剩 {count} 件', { count: left.total }) : t('以前还剩 {count} 件没做完', { count: left.total });
-      showNotice(message, [{ label: t('去看看'), run: () => this.openPath(left.days[0].path) }], 10000);
-      return;
-    }
-    await this.applyCarry(file, bring);
+    this.setLeftOver(plan.days, today);
   }
+
 
   // 侧边栏底下那句话和它的小菜单用的数：每天剩几件、最近 3 天 / 7 天 / 全部各几件、点「去看看」去哪天
   setLeftOver(days, today = this.now()) {
     const total = days.reduce((sum, day) => sum + day.pending.length, 0);
     this.leftOver = total
-      ? { dateKey: dateKey(today), total, counts: leftCounts(days), onlyYesterday: days.length === 1 && days[0].offset === 1, date: addDays(today, -days[0].offset) }
+      ? { dateKey: dateKey(today), total, date: addDays(today, -days[0].offset) }
       : null;
     this.views().forEach((view) => view.drawLeft());
   }
@@ -253,30 +235,11 @@ export default class YaojiTodayPlugin extends Plugin {
   // 带过来以后、撤销以后：重看一遍还剩几件（不再自己带）
   async refreshLeftOver() {
     try {
-      const plan = await planCarry({ io: this.io(), settings: this.settings, today: this.now(), parser: this.parser, formatDate: (d, p) => this.formatDate(d, p) });
+      const plan = await planCarry({ io: this.io(), settings: this.settings, today: this.now(), parser: this.parser, all: true, formatDate: (d, p) => this.formatDate(d, p) });
       this.setLeftOver(plan.days);
     } catch { /* 读不了就先留着原来那句 */ }
   }
 
-  // 菜单里选的：最近 3 天 / 最近 7 天 / 全部（range = 3 | 7 | 'all'），和「把没做完的带到今天」同一条路，能撤销
-  async carryRange(range) {
-    try {
-      const file = await this.ensureToday({ carry: false });
-      const plan = await planCarry({
-        io: this.io(), settings: this.settings, today: this.now(), parser: this.parser,
-        ...(range === 'all' ? { all: true } : { maxDays: Number(range) }),
-        formatDate: (d, p) => this.formatDate(d, p)
-      });
-      if (!plan.total) {
-        showNotice(t('以前的都做完了'), [], 3000);
-      } else {
-        await this.applyCarry(file, plan);
-      }
-    } catch (error) {
-      showNotice(t('写不进今天的日记：{error}', { error: error?.message || error }), [], 8000);
-    }
-    await this.refreshLeftOver();
-  }
 
   // 带过来：先写今天，再从以前的日记拿走（和扩展同样的顺序：中途出错也只会多一份，不会丢）
   async applyCarry(file, plan) {

@@ -107,6 +107,7 @@
 }
 
 .yaoji-today button.yaoji-today-link:not(.clickable-icon),
+/* 「全部带来」（2026-10-31 方案 A）：墨色 + 细下划线，一看就是能点的字；点了就地带过来 */
 .yaoji-today button.yaoji-left-link:not(.clickable-icon) {
   padding: 0;
   height: auto;
@@ -115,13 +116,21 @@
   box-shadow: none;
   font: inherit;
   font-size: 12px;
-  color: var(--yaoji-muted);
+  color: var(--yaoji-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--background-modifier-border);
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 
 .yaoji-today button.yaoji-today-link:not(.clickable-icon):hover,
 .yaoji-today button.yaoji-left-link:not(.clickable-icon):hover {
-  color: var(--yaoji-ink);
+  text-decoration-color: currentColor;
+}
+
+.yaoji-today button.yaoji-left-link:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* 翻前后一天：移到标头这一行才出现 */
@@ -424,6 +433,9 @@
 }
 
 .yaoji-left {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
   padding: 12px 20px;
   font-size: 12px;
   color: var(--yaoji-muted);
