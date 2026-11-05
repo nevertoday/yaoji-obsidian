@@ -83,3 +83,8 @@ test('round-two words are in all 13 languages', () => {
     assert.equal(Object.keys(MESSAGES[key] || {}).length, 12, key);
   }
 });
+
+test('Shift range starts from the last picked row, or the plainly clicked row — upward works too (like Finder)', () => {
+  assert.match(view, /const start = this\.picked\.size \? \(this\.lastPicked \|\| this\.lastClicked\) : this\.lastClicked;/);
+  assert.match(view, /if \(event\.button === 0 && !\(event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey\)\) this\.lastClicked = key;/);
+});

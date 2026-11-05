@@ -232,6 +232,10 @@ export class TodayView extends ItemView {
     const grip = row.createSpan({ cls: 'yaoji-grip', attr: { 'aria-hidden': 'true' } });
     setIcon(grip, 'grip-vertical');
     grip.addEventListener('pointerdown', (event) => this.startDrag(event, row, todo, path));
+    // 不按键点一件：记下来当 Shift 的起点（照常是点这一件该做的事）
+    row.addEventListener('pointerdown', (event) => {
+      if (event.button === 0 && !(event.metaKey || event.ctrlKey || event.shiftKey)) this.lastClicked = key;
+    });
     // 按住 ⌘ / Ctrl / Shift 点：选上（不进编辑、不勾方框、不开链接）
     row.addEventListener('click', (event) => {
       if (!(event.metaKey || event.ctrlKey || event.shiftKey)) return;
@@ -536,14 +540,16 @@ export class TodayView extends ItemView {
   }
 
   // ---------- 多选 ----------
+  // Shift 点选一段（照「访达」）：起点是最后点选的那件；还没选时是普通点过的那件——往上往下都行
   pickGesture(key, range) {
-    if (range && this.lastPicked) {
+    const start = this.picked.size ? (this.lastPicked || this.lastClicked) : this.lastClicked;
+    if (range && start) {
       const keys = this.rows.map((entry) => entry.key);
-      const a = keys.indexOf(this.lastPicked);
+      const a = keys.indexOf(start);
       const b = keys.indexOf(key);
       if (a >= 0 && b >= 0) {
         for (const entry of this.rows.slice(Math.min(a, b), Math.max(a, b) + 1)) this.setPicked(entry, true);
-        this.lastPicked = key;
+        this.lastPicked = start;
         this.drawPickBar();
         return;
       }
