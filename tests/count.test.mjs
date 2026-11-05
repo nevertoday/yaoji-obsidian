@@ -51,7 +51,8 @@ test('带到今天：次数从 0 开始；今天已经有的同一件（带着�
 });
 
 test('清单里：字后面一个小数，点一下 +1；右键「做了一次」「少记一次」；提示能撤销', () => {
-  assert.match(view, /const counted = TodoCount\.parse\(todo\.text\);/);
+  // 标签从字里拿出来以后再认次数（2026-11-05 整理）
+  assert.match(view, /const counted = TodoCount\.parse\(words\);/);
   assert.match(view, /host\.createEl\('button', \{ cls: 'yaoji-count', text: `×\$\{counted\.count\}` \}\)/);
   assert.match(view, /if \(!todo\.checked\) this\.bump\(todo, path, 1, sourcePath\);/);
   assert.match(view, /\.setTitle\(t\('少记一次'\)\)/);

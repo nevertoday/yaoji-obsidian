@@ -108,10 +108,12 @@
   }
 
   // ---------- 标签：任务里写了项目的标签，加好就发到那个项目（GitHub 问题 #5） ----------
-  // 写法和 Obsidian 一样：# 后面写到空格或标点为止；前面是行首、空白、左括号或中文标点（「日历点不开，#日记」也算；
+  // 写法照 Obsidian：# 后面写到空格或标点为止；前面是行首、空白、左括号、中文标点或汉字（「日历点不开，#日记」「修复登录#日记」也算；
   // 网址里的 #锚点 不算）；全是数字的不算（#42 是问题编号）。不分大小写。
   const TAG_STOP = '\\s#.,!?;:，。！？；：、()（）【】\\[\\]{}<>"\'“”‘’`|';
-  const TAG_BEFORE = '\\s(（【\\[，。、；：！？';
+  // 中文、日文、韩文后面直接写 #标签 也算（「修复登录#xxd-prompts」；扩展问题 #77：中文输入时 # 前面常常不打空格）；
+  // 英文字母、数字后面的不算：网址里的 #锚点、owner/repo#12 不当标签
+  const TAG_BEFORE = '\\s(（【\\[，。、；：！？\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}';
   const TAG_RE = new RegExp(`(^|[${TAG_BEFORE}])#([^${TAG_STOP}]{1,40})`, 'gu');
   const TAG_CLEAN_RE = new RegExp(`[${TAG_STOP}]`, 'gu');
   const MAX_TAGS_PER_REPO = 8;
@@ -125,12 +127,20 @@
   const tagKey = (value) => cleanTag(value).toLocaleLowerCase();
 
   // 文字里所有的标签：[{ tag, start, end }]，start 指着 #
+  // 网址、[[笔记#标题]] 链接里面的 # 不是标签（汉字后面也算标签以后，「…/中文#锚点」「[[笔记#节]]」会被误认，#77）
+  const NOT_TAG_SPANS_RE = /https?:\/\/[^\s<>"'）)\]]+|\[\[[^\]\n]*\]\]/g;
+
   function findTags(text) {
+    const value = String(text || '');
     const out = [];
-    for (const match of String(text || '').matchAll(TAG_RE)) {
+    const spans = value.includes('://') || value.includes('[[')
+      ? [...value.matchAll(NOT_TAG_SPANS_RE)].map((m) => [m.index, m.index + m[0].length])
+      : [];
+    for (const match of value.matchAll(TAG_RE)) {
       const tag = match[2];
       if (/^\d+$/.test(tag)) continue;
       const start = match.index + match[1].length;
+      if (spans.some(([from, to]) => start >= from && start < to)) continue;
       out.push({ tag, start, end: start + 1 + tag.length });
     }
     return out;
@@ -265,10 +275,12 @@
       for (const todo of Array.isArray(items) ? items : []) {
         if (!todo) continue;
         const text = String(todo.text || '');
-        const issue = findIssueUrls(text)[0];
+        const issues = findIssueUrls(text);
+        const issue = issues[0];
         if (!todo.checked && issue) {
           const route = routeOf(text, routes);
-          if (route && route.repo.toLowerCase() !== issue.repo.toLowerCase()) {
+          // 那个项目里已经有一个了（「两个都要」，GitHub 问题 #66）：不再问
+          if (route && !issues.some((item) => item.repo.toLowerCase() === route.repo.toLowerCase())) {
             out.push({ todo, issue, repo: route.repo, tag: route.tag, key: `move:${autoSendKey(dateKey, text)}` });
           }
         }
@@ -663,9 +675,16 @@
     }
 
     // 改发到（GitHub 问题 #15）：back 是搬之前那一个，撤销时带上（上次是复制过去的，会员站把原来那个重新打开）
-    move({ repo, number, to, back = null }) {
-      const payload = { repo, number, to, toNote: tr('搬到了 {ref}'), fromNote: tr('从 {ref} 搬过来'), ...(back ? { back } : {}) };
+    // clean（GitHub 问题 #80）：标签改到了别的项目、跟着搬——不留痕迹：新的不写「从哪搬来」，老的能删就删；
+    // 老的已经关了、有别人留言的，会员站不搬（issue_closed / issue_has_replies）
+    move({ repo, number, to, back = null, clean = false }) {
+      const payload = { repo, number, to, toNote: tr('搬到了 {ref}'), fromNote: tr('从 {ref} 搬过来'), ...(back ? { back } : {}), ...(clean ? { clean: true } : {}) };
       return this.requireClient().authorizedPost('/github/move', payload, { timeoutMs: 60000 });
+    }
+
+    // 撤回（GitHub 问题 #67 方案 B）：能删就删（how: deleted），删不了关成「不打算做」（how: closed），已经没了（how: gone）
+    withdraw({ repo, number }) {
+      return this.requireClient().authorizedPost('/github/withdraw', { repo, number, note: tr('从今日待办撤回了') }, { timeoutMs: 60000 });
     }
 
     async send({ repo, title, body, footer: foot, images = [], docs = [], dedupeKey = '' }) {
@@ -695,7 +714,12 @@
       too_many_images: tr('一次最多 8 张图片'),
       github_rate_limited: tr('GitHub 说太频繁了，过一会儿再发'),
       request_timeout: tr('发送超时，请再试一次'),
-      network_error: tr('连不上网络，请检查后再试')
+      network_error: tr('连不上网络，请检查后再试'),
+      // 撤回（GitHub 问题 #67）
+      issue_closed: tr('这个问题已经关了，去 GitHub 上处理'),
+      issue_has_replies: tr('下面有人留过言了，去 GitHub 上处理'),
+      github_withdrawn: tr('这件事发过又撤回了，想发再右键'),
+      not_found: tr('撤回还没开放，过两天再试')
     };
     if (map[code]) return map[code];
     // GitHub 没收下（正文太长、标题不合规等）：把它说的原话带上

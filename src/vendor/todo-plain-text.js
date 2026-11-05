@@ -53,8 +53,18 @@
    * resolvePath(ref)：把附件引用（库里的位置或短名）换成要写出去的路径；不给就原样写。
    * 返回 { text, attachments }：attachments 是写出去的附件引用（不含网页图片），给调用方判断要不要提示填库的位置。
    */
+  // 发到 GitHub 以后接在任务后面的问题地址（GitHub 问题 #71）：列表里已经是「■ 项目 #42」那块牌子，复制出去不带
+  // （以前贴给别人、贴给 AI 时后面跟一串 https://github.com/…/issues/42，用户说「乱七八糟」）
+  // 只去掉地址和它前面的空格，别的字（缩进、连续空格）原样不动
+  const ISSUE_URL_RE = /[ \t]*(?:\[[^\]\n]{0,500}\]\(\s*<?https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\/\d+>?\s*\)|https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\/\d+(?![\w/]))/g;
+  function stripIssueUrls(text) {
+    const raw = String(text || '');
+    if (!/github\.com\/[^\s/]+\/[^\s/]+\/issues\/\d/.test(raw)) return raw;
+    return raw.replace(ISSUE_URL_RE, '').replace(/^[ \t]+/, '');
+  }
+
   function convertText(raw, { resolvePath } = {}) {
-    const source = String(raw || '');
+    const source = stripIssueUrls(raw);
     const attachments = [];
     let out = '';
     let cursor = 0;
@@ -131,7 +141,7 @@
       .trim();
   }
 
-  const api = { todoToPlainText, convertText, joinDiskPath, oneLine };
+  const api = { todoToPlainText, convertText, joinDiskPath, oneLine, stripIssueUrls };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TodoPlainText = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

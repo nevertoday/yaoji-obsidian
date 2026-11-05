@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { MESSAGES } from '../src/i18n.js';
+
+// 2026-11-05 整理（用户反馈：Obsidian 插件「丑、累赘、和扩展没法比，操作也没跟上扩展的习惯」）：
+// 侧边栏照浏览器扩展的样子和习惯——标头一行、标签小签、GitHub 浅底牌子、做完的放最后、双击改字、「⋯」和右键同一份菜单
+const view = readFileSync(new URL('../src/view.js', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+
+test('header is one line: date, lucky mark and done count; no separate meta row', () => {
+  assert.doesNotMatch(view, /metaEl|drawMeta/);
+  assert.match(view, /if \(lucky\) day\.createSpan\(\{ cls: 'yaoji-lucky', text: t\('吉'\)/);
+  assert.match(view, /const side = head\.createDiv\(\{ cls: 'yaoji-head-side' \}\);/);
+});
+
+test('done to-dos are listed last (display only; paths still point into the note)', () => {
+  assert.match(view, /const shown = \[\.\.\.order\.filter\(\(item\) => !item\.todo\.checked\), \.\.\.order\.filter\(\(item\) => item\.todo\.checked\)\];\n {4}shown\.forEach\(\(\{ todo, index \}\) => draw\(\[todo\], \[\], 0, index\)\);/);
+  assert.match(view, /const index = startIndex \+ offset;\n {8}const path = \[\.\.\.parentPath, index\];/);
+});
+
+test('tags become a row of chips under the text; the issue is a tinted chip, the row itself is not tinted', () => {
+  assert.match(view, /const hits = raw\.includes\('#'\) \? \(G\.findTags\?\.\(raw\) \|\| \[\]\) : \[\];/);
+  assert.match(view, /const chips = tags\.filter\(\(tag\) => tag\.toLowerCase\(\) !== repoName\);/);
+  assert.doesNotMatch(view, /row\.addClass\('has-issue'\)/);
+  assert.match(css, /\.yaoji-issue \{[^}]*background: color-mix\(in srgb, var\(--yaoji-issue\) 12%, transparent\);/);
+  assert.doesNotMatch(css, /\.yaoji-item\.has-issue/);
+});
+
+test('double-click edits in place (Enter saves, Esc cancels, issue links kept); the ⋯ button and right-click share one menu', () => {
+  assert.match(view, /text\.addEventListener\('dblclick', \(event\) => \{[\s\S]*?this\.startEdit\(row, text, todo, path, sourcePath\);/);
+  assert.match(view, /if \(event\.key === 'Enter' && !event\.shiftKey\) \{ event\.preventDefault\(\); finish\(true\); \}/);
+  assert.match(view, /const full = \[next, \.\.\.urls\]\.join\(' '\);/);
+  assert.match(view, /this\.menuFor\(todo, path, sourcePath, counted, row, text\)\.showAtPosition/);
+  assert.match(view, /this\.menuFor\(todo, path, sourcePath, counted, row, text\)\.showAtMouseEvent\(event\);/);
+  for (const key of ["t('完成')", "t('编辑')", "t('复制文字')", "t('删除')"]) assert.ok(view.includes(key), key);
+});
+
+test('styles follow the extension: interface font, 8-point grid, quiet ⋯ until hover, star = weight + thin line', () => {
+  assert.match(css, /font-family: var\(--font-interface\);/);
+  assert.doesNotMatch(css, /Avenir Next/);
+  assert.match(css, /\.yaoji-today \.yaoji-more \{[^}]*opacity: 0;/);
+  assert.match(css, /\.yaoji-item\.is-star:not\(\.is-done\) \.yaoji-text,[\s\S]*?text-underline-offset: 0\.42em;/);
+  // 间距只用 4 8 16 24
+  const spacing = [...css.matchAll(/(?:padding|margin|gap)(?:-[a-z-]+)?:\s*([^;]+);/g)].flatMap((m) => [...m[1].matchAll(/(\d+(?:\.\d+)?)px/g)].map((x) => Number(x[1])));
+  const odd = spacing.filter((px) => ![0, 1, 2, 4, 8, 16, 24, 32, 40].includes(px));
+  assert.deepEqual(odd, []);
+});
+
+test('the new words are in all 13 languages', () => {
+  for (const key of ['今天还没有待办', '黄道吉日', '标为未完成', '完成', '编辑', '复制文字', '已复制', '复制失败', '找带 #{tag} 的事', '更多']) {
+    assert.equal(Object.keys(MESSAGES[key] || {}).length, 12, key);
+  }
+});

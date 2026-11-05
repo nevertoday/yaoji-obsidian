@@ -38,8 +38,10 @@
   color: var(--text-muted);
 }
 
-/* ---------- 侧边栏「今天」：整套照浏览器扩展的侧边栏（GitHub 问题 #22 方案 A） ----------
-   颜色、字、线都是扩展 core/ui-tokens.css 的值；深浅跟着 Obsidian（.theme-dark）。 */
+/* ---------- 侧边栏「今天」：和浏览器扩展的侧边栏一个样子（2026-11-05 整理：用户反馈「丑、累赘、和扩展没法比」） ----------
+   颜色、字号、间距都是扩展 core/ui-tokens.css 的值：8 点网格（4 8 16 24）、字 15 / 13 / 11；
+   字体用 Obsidian 自己的界面字体（跟着用户的设置），深浅跟着 Obsidian（.theme-dark）。
+   规矩：一行只有一个记号；平时用不着的东西（翻天的箭头、「⋯」）指上去才出来；方角。 */
 
 .yaoji-today {
   --yaoji-ink: #111111;
@@ -47,11 +49,10 @@
   --yaoji-line: #e7e7ea;
   --yaoji-line-strong: #c9c9ce;
   --yaoji-check-line: rgba(17, 17, 17, 0.34);
-  --yaoji-check-on: #535353;
+  --yaoji-check-on: #111111;
   --yaoji-hover: rgba(17, 17, 17, 0.04);
+  --yaoji-chip: rgba(17, 17, 17, 0.06);
   --yaoji-lucky: #a87a08;
-  --yaoji-lucky-dot: #f5b301;
-  --yaoji-repo-wash: 5%;
   /* 勾上时方块里那个勾（ui-icons.js 的 Check 同款细线）：浅色是白勾 */
   --yaoji-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fcfcfc' stroke-width='2.4' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='m5.5 12.5 4.5 4.5 8.5-9'/%3E%3C/svg%3E");
   --yaoji-repo-1: #4a7fb5;
@@ -66,8 +67,9 @@
   flex-direction: column;
   padding: 0 !important;
   color: var(--yaoji-ink);
-  font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  font-size: 12px;
+  font-family: var(--font-interface);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .theme-dark .yaoji-today {
@@ -76,38 +78,69 @@
   --yaoji-line: #34322b;
   --yaoji-line-strong: #4c483f;
   --yaoji-check-line: rgba(243, 240, 234, 0.34);
-  --yaoji-check-on: #b5b3ad;
+  --yaoji-check-on: #ece8e0;
   --yaoji-hover: rgba(255, 255, 255, 0.05);
+  --yaoji-chip: rgba(255, 255, 255, 0.08);
   --yaoji-lucky: #f6c765;
-  --yaoji-lucky-dot: #f6c765;
-  --yaoji-repo-wash: 9%;
   --yaoji-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23201f1a' stroke-width='2.4' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='m5.5 12.5 4.5 4.5 8.5-9'/%3E%3C/svg%3E");
 }
 
-/* 标头：今天 · 10/25 · 周日 */
+/* 标头一行：今天 · 11/5 · 周四　吉　……　✓ 2  ‹ › */
 .yaoji-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
-  padding: 14px 16px 2px 20px;
+  min-height: 32px;
+  padding: 16px 16px 0;
 }
 
 .yaoji-day {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
 .yaoji-date {
   font-size: 15px;
   font-weight: 600;
+  white-space: nowrap;
   color: var(--yaoji-ink);
 }
 
+/* 吉日：日期后面一个金色的小字「吉」，指上去写是哪位值神 */
+.yaoji-lucky {
+  color: var(--yaoji-lucky);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.yaoji-head-side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+
+.yaoji-done-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--yaoji-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.yaoji-done-icon,
+.yaoji-done-icon svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
 .yaoji-today button.yaoji-today-link:not(.clickable-icon),
-/* 「全部带来」（2026-10-31 方案 A）：墨色 + 细下划线，一看就是能点的字；点了就地带过来 */
+/* 「全部带来」：墨色 + 细下划线，一看就是能点的字；点了就地带过来 */
 .yaoji-today button.yaoji-left-link:not(.clickable-icon) {
   padding: 0;
   height: auto;
@@ -115,10 +148,10 @@
   background: none;
   box-shadow: none;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--yaoji-ink);
   text-decoration: underline;
-  text-decoration-color: var(--background-modifier-border);
+  text-decoration-color: var(--yaoji-line-strong);
   text-underline-offset: 3px;
   cursor: pointer;
 }
@@ -133,10 +166,9 @@
   cursor: default;
 }
 
-/* 翻前后一天：移到标头这一行才出现 */
+/* 翻前后一天：指到标头这一行才出来（手机上一直在） */
 .yaoji-nav {
   display: flex;
-  margin-inline-start: auto;
   opacity: 0;
   transition: opacity 160ms ease;
 }
@@ -147,69 +179,19 @@
   opacity: 1;
 }
 
-/* 标头下面一行：● 吉 · 金匮 | ✓ 1 */
-.yaoji-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 2px 20px 0;
-  font-size: 12px;
-  color: var(--yaoji-muted);
-}
-
-.yaoji-meta.is-hidden {
-  display: none;
-}
-
-.yaoji-lucky {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--yaoji-lucky);
-  font-weight: 600;
-}
-
-.yaoji-lucky::before {
-  content: '';
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--yaoji-lucky-dot);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yaoji-lucky-dot) 15%, transparent);
-}
-
-.yaoji-meta-sep {
-  width: 1px;
-  height: 11px;
-  background: var(--yaoji-line-strong);
-}
-
-.yaoji-done-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--yaoji-ink);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.yaoji-done-icon,
-.yaoji-done-icon svg {
-  width: 12px;
-  height: 12px;
-  color: var(--yaoji-muted);
-  stroke-width: 2;
+.yaoji-nav .clickable-icon {
+  padding: 4px;
 }
 
 /* 方的输入框，前面一个 + */
 .yaoji-input-box {
   position: relative;
-  margin: 12px 12px 14px;
+  margin: 16px 16px 8px;
 }
 
 .yaoji-input-plus {
   position: absolute;
-  inset-inline-start: 12px;
+  inset-inline-start: 16px;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
@@ -218,46 +200,76 @@
 }
 
 .yaoji-input-plus svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   stroke-width: 1.5;
 }
 
-.yaoji-today input.yaoji-input {
+.yaoji-today input.yaoji-input,
+.yaoji-today textarea.yaoji-edit {
   width: 100%;
-  height: 40px;
-  padding: 10px 12px 10px 36px;
   border: 1px solid var(--yaoji-line-strong);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
   color: var(--yaoji-ink);
   font: inherit;
-  font-size: 13.5px;
+}
+
+.yaoji-today input.yaoji-input {
+  height: 40px;
+  padding: 8px 16px 8px 40px;
+  font-size: 15px;
 }
 
 .yaoji-today input.yaoji-input::placeholder {
   color: var(--yaoji-muted);
 }
 
-.yaoji-today input.yaoji-input:focus {
+.yaoji-today input.yaoji-input:focus,
+.yaoji-today textarea.yaoji-edit:focus {
   border-color: color-mix(in srgb, var(--yaoji-ink) 40%, var(--yaoji-line-strong));
   box-shadow: none;
 }
 
-/* 一行一件，细线隔开 */
+/* 一行一件，细线隔开；子任务和它上面那件是一组，组里不画线 */
 .yaoji-list {
   display: flex;
   flex-direction: column;
+  margin-top: 8px;
   border-top: 1px solid var(--yaoji-line);
 }
 
+.yaoji-list.is-empty {
+  border-top: 0;
+}
+
+.yaoji-empty {
+  padding: 24px 16px;
+  color: var(--yaoji-muted);
+  text-align: center;
+}
+
 .yaoji-item {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 11px 16px 11px calc(20px + var(--depth, 0) * 22px);
+  gap: 8px;
+  padding: 8px 16px 8px calc(16px + var(--depth, 0) * 24px);
   border-bottom: 1px solid var(--yaoji-line);
+}
+
+.yaoji-item.has-children,
+.yaoji-item.is-child:has(+ .yaoji-item.is-child) {
+  border-bottom-color: transparent;
+}
+
+.yaoji-item.has-children {
+  padding-bottom: 4px;
+}
+
+.yaoji-item.is-child {
+  padding-top: 4px;
 }
 
 .yaoji-item:hover {
@@ -269,18 +281,17 @@
   -webkit-appearance: none;
   appearance: none;
   flex: none;
-  width: 18px;
-  height: 18px;
-  margin: 1.5px 0 0;
+  width: 16px;
+  height: 16px;
+  margin: 4px 4px 0 0;
   border: 1px solid var(--yaoji-check-line);
   border-radius: 0;
   background: transparent;
   cursor: pointer;
-  position: relative;
 }
 
 .yaoji-today input.yaoji-check:checked {
-  background: var(--yaoji-check-on) var(--yaoji-tick) center / 14px 14px no-repeat;
+  background: var(--yaoji-check-on) var(--yaoji-tick) center / 12px 12px no-repeat;
   border-color: transparent;
 }
 
@@ -305,8 +316,8 @@
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--yaoji-ink);
-  font-size: 14px;
-  line-height: 21px;
+  font-size: 15px;
+  line-height: 24px;
 }
 
 .yaoji-text > :first-child { margin-top: 0; }
@@ -314,6 +325,7 @@
 .yaoji-text p { margin: 0; }
 .yaoji-text a { color: inherit; text-decoration-color: var(--yaoji-line-strong); }
 .yaoji-text img { max-height: 48px; width: auto; vertical-align: middle; }
+.yaoji-text mark { background: none; color: inherit; }
 
 /* 长的折成两行，点了展开 */
 .yaoji-item:not(.is-open) .yaoji-text {
@@ -325,6 +337,21 @@
 
 .yaoji-item.is-long .yaoji-text { cursor: pointer; }
 
+/* 就地改字：输入框盖住原来那块字；标签都在框里了，下面那排小签先收起来（不说两遍） */
+.yaoji-item.is-editing :is(.yaoji-text, .yaoji-tags) {
+  display: none;
+}
+
+.yaoji-today textarea.yaoji-edit {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 15px;
+  line-height: 24px;
+  resize: none;
+  overflow: hidden;
+}
+
+/* 做完的：灰、划掉；标签和牌子也跟着淡 */
 .yaoji-item.is-done .yaoji-text,
 .yaoji-item.is-done .yaoji-text p {
   color: var(--yaoji-muted);
@@ -332,13 +359,16 @@
   text-decoration-color: var(--yaoji-muted);
 }
 
-/* 做了几次（扩展的 GitHub 问题 #46 方案 A，照「时钟 › 秒表」的「计次」）：字后面一个小数「×3」，灰的、等宽数字；
-   指上去浅浅一层底，点一下 +1。做完的不划它、也不能再点。Obsidian 自己的按钮样子（底色、阴影、高度）都去掉 */
+.yaoji-item.is-done :is(.yaoji-tags, .yaoji-issue) {
+  opacity: 0.6;
+}
+
+/* 做了几次：字后面一个小数「×3」，灰的、等宽数字；指上去浅浅一层底，点一下 +1 */
 .yaoji-text .yaoji-count {
   display: inline-block;
   height: auto;
   margin: 0;
-  margin-inline-start: 6px;
+  margin-inline-start: 4px;
   padding: 0 4px;
   border: 0;
   border-radius: 0;
@@ -346,7 +376,7 @@
   background: none;
   color: var(--yaoji-muted);
   font: inherit;
-  font-size: 0.92em;
+  font-size: 13px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   line-height: inherit;
@@ -370,36 +400,67 @@
   color: var(--yaoji-muted);
 }
 
-/* 星标：加粗 + 一条墨色的线（和扩展一样）；线在字下面 6px，折两行时底下留出位置，不被裁掉 */
-.yaoji-item.is-star .yaoji-text {
-  padding-bottom: 6px;
-}
-
-.yaoji-item.is-star .yaoji-text,
-.yaoji-item.is-star .yaoji-text p {
+/* 星标（和扩展的「金线落款」一样）：字稍重，下面一道离字远一点的细线 */
+.yaoji-item.is-star:not(.is-done) .yaoji-text,
+.yaoji-item.is-star:not(.is-done) .yaoji-text p {
   font-weight: 600;
-  text-decoration: underline;
+  text-decoration-line: underline;
   text-decoration-color: color-mix(in srgb, var(--yaoji-ink) 70%, transparent);
   text-decoration-thickness: 1.5px;
-  text-underline-offset: 5.88px;
+  text-underline-offset: 0.42em;
+  text-decoration-skip-ink: none;
 }
 
-/* GitHub 问题：整行一层极浅的项目色，字下面一个牌子「■ xposter #40」 */
-.yaoji-item.has-issue {
-  background: color-mix(in srgb, var(--yaoji-issue) var(--yaoji-repo-wash), transparent);
+.yaoji-item.is-star:not(.is-done) .yaoji-text {
+  padding-bottom: 4px;
 }
 
+/* #标签：正文下面一排浅底小签（方角）；点了在搜索里找带它的事 */
+.yaoji-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.yaoji-today button.yaoji-tag {
+  height: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--yaoji-chip);
+  color: color-mix(in srgb, var(--yaoji-ink) 80%, var(--yaoji-muted));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.yaoji-today button.yaoji-tag:hover {
+  background: color-mix(in srgb, var(--yaoji-ink) 12%, transparent);
+}
+
+/* GitHub 问题：项目色的浅底小签「■ xposter #40」（和扩展的 GitHub 问题 #84 一样），整行不再着色 */
 .yaoji-issue {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
+  align-self: flex-start;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 4px;
+  background: color-mix(in srgb, var(--yaoji-issue) 12%, transparent);
   color: color-mix(in srgb, var(--yaoji-ink) 85%, var(--yaoji-muted));
+  font-size: 13px;
+  line-height: 20px;
 }
 
-.yaoji-issue {
-  max-width: 100%;
-  align-self: flex-start;
+.yaoji-issue::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--yaoji-issue);
 }
 
 /* 项目名太长就截断，编号紧跟在名字后面，不换行 */
@@ -412,17 +473,6 @@
 
 .yaoji-today a.yaoji-issue-num {
   flex: none;
-}
-
-.yaoji-issue::before {
-  content: '';
-  flex: none;
-  width: 7px;
-  height: 7px;
-  background: var(--yaoji-issue);
-}
-
-.yaoji-today a.yaoji-issue-num {
   color: var(--yaoji-issue);
   font-weight: 600;
   text-decoration: none;
@@ -432,12 +482,33 @@
   text-decoration: underline;
 }
 
+/* 指到这一件，右边一个「⋯」（和右键同一份菜单）；平时不出来 */
+.yaoji-today .yaoji-more {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.yaoji-item:hover .yaoji-more,
+.yaoji-more:focus-visible,
+.is-mobile .yaoji-more {
+  opacity: 1;
+}
+
+.yaoji-item.is-editing .yaoji-more {
+  display: none;
+}
+
+/* 底下一行「以前还有 N 件没做完　全部带来」 */
 .yaoji-left {
   display: flex;
   align-items: baseline;
   gap: 16px;
-  padding: 12px 20px;
-  font-size: 12px;
+  padding: 16px;
+  font-size: 13px;
   color: var(--yaoji-muted);
 }
 
