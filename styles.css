@@ -665,3 +665,163 @@
   color: var(--text-warning);
   overflow-wrap: anywhere;
 }
+
+/* ===== 里程碑（src/milestones.js，和扩展的 GitHub 问题 #97 方案 B 一样，照奖杯底座上刻的那一行）=====
+   一行一个：左边一个很大的序号，右边那句话和到的那天；还没到的序号是空心的轮廓，今天刚到的那个被墨填满一次 */
+.yaoji-ms-modal {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.yaoji-ms-body {
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+}
+
+.yaoji-ms-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+
+
+.yaoji-ms-modal .yaoji-ms-list .yaoji-ms-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  height: auto;
+  padding: 16px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.yaoji-ms-modal .yaoji-ms-list li + li .yaoji-ms-row {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Obsidian 自己的按钮样式（灰底、阴影）比这里重：前面加上窗和列表 */
+.yaoji-ms-modal .yaoji-ms-list button.yaoji-ms-row {
+  cursor: pointer;
+}
+
+.yaoji-ms-modal .yaoji-ms-list button.yaoji-ms-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yaoji-ms-n {
+  color: var(--text-normal);
+  font-size: 40px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 40px;
+}
+
+.yaoji-ms-row.is-ahead .yaoji-ms-n {
+  color: transparent;
+  -webkit-text-stroke: 1.2px var(--text-faint);
+}
+
+.yaoji-ms-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.yaoji-ms-copy b {
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.yaoji-ms-row.is-ahead .yaoji-ms-copy b {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.yaoji-ms-copy small {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yaoji-ms-row.is-new .yaoji-ms-n {
+  animation: yaoji-ms-ink 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.yaoji-ms-row.is-new .yaoji-ms-copy {
+  animation: yaoji-ms-rise 0.7s ease 0.15s backwards;
+}
+
+@keyframes yaoji-ms-ink {
+  0% { color: transparent; -webkit-text-stroke: 1.2px var(--text-faint); }
+  60% { color: var(--interactive-accent); -webkit-text-stroke: 0 transparent; }
+  100% { color: var(--text-normal); }
+}
+
+@keyframes yaoji-ms-rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+.yaoji-ms-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.yaoji-ms-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yaoji-ms-foot-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.yaoji-ms-modal .yaoji-ms-link {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.yaoji-ms-rename {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.yaoji-ms-rename input {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yaoji-ms-row.is-new .yaoji-ms-n,
+  .yaoji-ms-row.is-new .yaoji-ms-copy {
+    animation: none;
+  }
+}

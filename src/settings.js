@@ -15,7 +15,9 @@ export const DEFAULT_SETTINGS = {
   // 第一次打开时看过日记插件的设置了（只看一次）
   adoptChecked: false,
   // 配对过的浏览器：[{ token, origin, name, at }]
-  browsers: []
+  browsers: [],
+  // 里程碑认哪个标签（空 = 跟着界面语言：#里程碑 / #milestone…；src/milestones.js）
+  milestoneTag: ''
 };
 
 // 标题要以 # 开头才找得到；只写了字就当三级标题

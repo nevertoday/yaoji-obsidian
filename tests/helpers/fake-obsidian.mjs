@@ -5,6 +5,7 @@ const stub = `
 export const requestUrl = (options) => globalThis.__requestUrl(options);
 export class TFile { constructor(path) { this.path = path; } }
 export class FuzzySuggestModal { constructor(app) { this.app = app; } setPlaceholder() {} open() {} }
+export class Modal { constructor(app) { this.app = app; } open() {} close() {} }
 export function moment() { return { format: () => '10/25' }; }
 `;
 register('data:text/javascript,' + encodeURIComponent(`

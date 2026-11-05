@@ -6,6 +6,7 @@ import MarkdownParser from './vendor/markdown-parser.js';
 import { detectLanguage, setLanguage, t } from './i18n.js';
 import { DEFAULT_SETTINGS, YaojiSettingTab, cleanSection, detectDiarySettings, sameAsDiary } from './settings.js';
 import { TodayView, VIEW_ICON, VIEW_TYPE, countedMessage } from './view.js';
+import { MilestonesModal } from './milestones.js';
 import { Bridge } from './bridge.js';
 import { hideBroughtMark } from './hide-mark.js';
 import { AUTH_ACTION, MEMBER_BASE, MemberClient } from './member.js';
@@ -67,6 +68,7 @@ export default class YaojiTodayPlugin extends Plugin {
     this.addCommand({ id: 'open-today', name: t('打开今天'), callback: () => this.openToday() });
     this.addCommand({ id: 'carry', name: t('把没做完的带到今天'), callback: () => this.carryNow() });
     this.addCommand({ id: 'show-sidebar', name: t('在侧边栏打开'), callback: () => this.showView() });
+    this.addCommand({ id: 'milestones', name: t('里程碑'), callback: () => new MilestonesModal(this.app, this).open() });
 
     this.app.workspace.onLayoutReady(() => {
       this.bridge.start();

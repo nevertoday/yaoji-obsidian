@@ -8,6 +8,7 @@ import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
 import { addDays, dateKey, editTodo, editTodos, insertTodo, mergeIntoToday, moveTodo, readTodos, restoreTodo, takeTodo, takeTodos, undoBrought } from './today.js';
 import { ISSUE_URL_RE } from './github.js';
+import { MilestonesModal, reachedMessage } from './milestones.js';
 import G from './vendor/github-issues.js';
 import TodoCount from './vendor/todo-count.js';
 import PlainText from './vendor/todo-plain-text.js';
@@ -214,6 +215,10 @@ export class TodayView extends ItemView {
     }
     // 翻前后一天：鼠标移到标头这一行才出现
     const nav = side.createDiv({ cls: 'yaoji-nav' });
+    // 里程碑（和扩展的 GitHub 问题 #97 一样）：一面小旗，和翻天的箭头一起指到这一行才出来
+    const flag = nav.createEl('button', { cls: 'clickable-icon yaoji-ms-open', attr: { 'aria-label': t('里程碑') } });
+    setIcon(flag, 'flag');
+    flag.addEventListener('click', () => new MilestonesModal(this.app, this.plugin).open());
     const prev = nav.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': t('前一天') } });
     setIcon(prev, 'chevron-left');
     prev.addEventListener('click', () => this.goTo(addDays(date, -1)));
@@ -253,7 +258,13 @@ export class TodayView extends ItemView {
     box.setAttribute('aria-label', todo.checked ? t('标为未完成') : t('完成'));
     box.addEventListener('click', (event) => {
       event.preventDefault();
-      this.change(todo, path, (item) => { item.checked = !item.checked; }, sourcePath);
+      const reaching = !todo.checked;
+      this.change(todo, path, (item) => { item.checked = !item.checked; }, sourcePath).then(async (ok) => {
+        // 写了 #里程碑 的（和扩展的 GitHub 问题 #97 一样）：提示里说刻上了第几个
+        if (!ok || !reaching) return;
+        const message = await reachedMessage(this.plugin, todo);
+        if (message) this.plugin.notify(message, [], 4000);
+      });
     });
 
     const body = row.createDiv({ cls: 'yaoji-body' });
