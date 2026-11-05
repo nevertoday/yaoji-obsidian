@@ -662,3 +662,39 @@ export function takeTodos(content, targets, section, parser) {
   const next = rewrite(content, section, todos, parser);
   return next === null ? null : { content: next, removed };
 }
+
+// 多选「合并成一条」（和扩展的多选一样）：按日记里的先后，第一件留下，几件的字一行一行接起来，
+// 有一件标了星就标星，其余几件的子任务挪到第一件下面；其余几件拿掉。字对不上（刚在别处改过）返回 null
+export function mergeTodos(content, targets, section, parser) {
+  const found = parser.extractSection(String(content || ''), section);
+  if (!found || !targets || targets.length < 2) return null;
+  const todos = parser.parseTodos(found.content);
+  const key = (path) => path.join('.');
+  const keys = new Set(targets.map(({ path }) => key(path)));
+  const tops = targets.filter(({ path }) => !path.some((_, i) => i < path.length - 1 && keys.has(key(path.slice(0, i + 1)))));
+  if (tops.length < 2) return null;
+  const compare = (a, b) => {
+    for (let i = 0; i < Math.max(a.path.length, b.path.length); i += 1) {
+      const d = (a.path[i] ?? -1) - (b.path[i] ?? -1);
+      if (d) return d;
+    }
+    return 0;
+  };
+  const ordered = [...tops].sort(compare);
+  const items = ordered.map(({ path, text }) => {
+    const todo = todoAt(todos, path);
+    return todo && todo.text === text ? todo : null;
+  });
+  if (items.some((item) => !item)) return null;
+  const [first, ...rest] = items;
+  first.text = items.map((todo) => String(todo.text || '').trim()).filter(Boolean).join('\n');
+  first.highlighted = items.some((todo) => todo.highlighted);
+  const under = (Number(first.indent) || 0) + 1;
+  first.children = [...(first.children || []), ...rest.flatMap((todo) => (todo.children || []).map((child) => normalizeIndent(child, under)))];
+  // 从后往前拿掉其余几件（前面的位置不变）
+  for (const { path } of ordered.slice(1).reverse()) {
+    const list = path.length > 1 ? todoAt(todos, path.slice(0, -1)).children : todos;
+    list.splice(path[path.length - 1], 1);
+  }
+  return rewrite(content, section, todos, parser);
+}

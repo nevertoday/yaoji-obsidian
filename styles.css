@@ -560,7 +560,7 @@
   box-shadow: inset 2px 0 0 var(--yaoji-ink);
 }
 
-/* 底下那一条：墨色、贴着侧边栏底部，「已选 N 件 · 完成 · 标签 · 复制 · 明天 · 删除 · ×」 */
+/* 底下那一条：墨色、贴着侧边栏底部，「已选 N 件 · 完成 · 标签 · 复制 · 移到… · 删除 · ⋯ · ×」 */
 .yaoji-pick-bar {
   position: sticky;
   bottom: 8px;
@@ -589,6 +589,7 @@
 }
 
 .yaoji-today button.yaoji-pick-act,
+.yaoji-today button.yaoji-pick-more,
 .yaoji-today button.yaoji-pick-close {
   height: 32px;
   padding: 0 8px;
@@ -608,7 +609,22 @@
   .yaoji-today button.yaoji-pick-act { padding: 0 4px; }
 }
 
+/* 一行放下：完成 · 标签 · 复制 · 移到… · 删除 · ⋯ · ×；窄的时候件数只写数字 */
+.yaoji-pick-bar:not(.is-renaming) {
+  flex-wrap: nowrap;
+}
+
+.yaoji-pick-count-short {
+  display: none;
+}
+
+@container (max-width: 400px) {
+  .yaoji-pick-count-full { display: none; }
+  .yaoji-pick-count-short { display: inline; font-weight: 600; }
+}
+
 .yaoji-today button.yaoji-pick-act:hover,
+.yaoji-today button.yaoji-pick-more:hover,
 .yaoji-today button.yaoji-pick-close:hover {
   background: color-mix(in srgb, var(--background-primary) 14%, transparent);
 }
@@ -824,4 +840,120 @@
   .yaoji-ms-row.is-new .yaoji-ms-copy {
     animation: none;
   }
+}
+
+/* 多选「改成同一句」：这一条换成「N 件改成 [框] 改好 ×」 */
+.yaoji-pick-rename {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.yaoji-pick-rename-count {
+  flex: none;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* ===== 勾掉一件就在那一行「撤销」（和扩展的 GitHub 问题 #99 方案 C 一样，照「提醒事项」）=====
+   右边一个「撤销」，底下一道细线走完（4 秒）就收起 */
+.yaoji-today button.yaoji-row-undo {
+  flex: none;
+  align-self: center;
+  height: auto;
+  margin-inline-start: auto;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--yaoji-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: yaoji-row-undo-in 0.2s ease-out;
+}
+
+.yaoji-today button.yaoji-row-undo:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yaoji-row-timer {
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 1px;
+  background: color-mix(in srgb, var(--yaoji-ink) 55%, transparent);
+  transform-origin: left center;
+  animation: yaoji-row-undo-timer linear forwards;
+  pointer-events: none;
+}
+
+@keyframes yaoji-row-undo-in {
+  from { opacity: 0; }
+}
+
+@keyframes yaoji-row-undo-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* GitHub 牌子后面那一句：关了的「✓ 已完成 / 不做了 / 重复了」，删掉了的「已删除」 */
+.yaoji-issue-state {
+  flex: none;
+  color: var(--yaoji-muted);
+  white-space: nowrap;
+}
+
+.yaoji-issue.is-done .yaoji-issue-state {
+  color: var(--yaoji-ink);
+}
+
+/* 撤回之前问一句：「GitHub 上的 #44 会删掉　撤回 · 不了」 */
+.yaoji-issue-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--yaoji-muted);
+  font-size: 13px;
+}
+
+.yaoji-today button.yaoji-issue-act {
+  height: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--yaoji-ink);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yaoji-today button.yaoji-row-undo,
+  .yaoji-row-timer {
+    animation: none;
+  }
+
+  .yaoji-row-timer {
+    display: none;
+  }
+}
+
+/* 这一栏能拿焦点（⌘Z 用），自己不画焦点框 */
+.yaoji-today:focus {
+  outline: none;
 }

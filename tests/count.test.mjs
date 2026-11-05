@@ -56,7 +56,8 @@ test('清单里：字后面一个小数，点一下 +1；右键「做了一次�
   assert.match(view, /host\.createEl\('button', \{ cls: 'yaoji-count', text: `×\$\{counted\.count\}` \}\)/);
   assert.match(view, /if \(!todo\.checked\) this\.bump\(todo, path, 1, sourcePath\);/);
   assert.match(view, /\.setTitle\(t\('少记一次'\)\)/);
-  assert.match(view, /run: \(\) => this\.change\(\{ \.\.\.todo, text: after \}, path, \(item\) => \{ item\.text = before; \}, sourcePath\)/);
+  // 提示里的「撤销」和 ⌘Z 是同一份（this.remember）
+  assert.match(view, /const entry = this\.remember\(\(\) => this\.change\(\{ \.\.\.todo, text: after \}, path, \(item\) => \{ item\.text = before; \}, sourcePath\)\);/);
   const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
   assert.match(css, /\.yaoji-text \.yaoji-count \{[\s\S]*?box-shadow: none;[\s\S]*?font-variant-numeric: tabular-nums;/);
 });

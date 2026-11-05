@@ -1,6 +1,6 @@
 {
   "repo": "nevertoday/obsidian-daily-todo-extension",
-  "commit": "6ec9e9d871d2d3fde62f54afd222ba23c14e5895",
+  "commit": "83e02f35d019aea7dad1da5ef42cf23133cc74b2",
   "files": [
     "core/markdown-parser.js",
     "core/github-issues.js",

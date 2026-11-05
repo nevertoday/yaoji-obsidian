@@ -199,7 +199,11 @@ export class Github {
       this.plugin.notify(this.errorText({ code: 'github_unavailable' }), [], 8000);
       return;
     }
-    await this.plugin.editTodoText(file, path, todo.text, (text) => G.appendIssueUrl(text, issue.url));
+    // GitHub 上删掉了、重新发的：老地址换成新的（不是再接一个）
+    await this.plugin.editTodoText(file, path, todo.text, (text) => {
+      const old = G.findIssueUrls(text)[0];
+      return old ? G.replaceIssueUrl(text, old.url, issue.url) : G.appendIssueUrl(text, issue.url);
+    });
     this.settings.recent = G.pushRecent(this.settings.recent, repo);
     await this.plugin.saveSettings();
     this.plugin.notify(t('发到了 {repo} #{number}', { repo: repo.split('/').pop(), number: issue.number }), [{
@@ -213,6 +217,9 @@ export class Github {
     if (code === 'membership_required') return t('发到 GitHub 是会员功能');
     if (code === 'github_not_connected' || code === 'github_reconnect_required') return t('先在设置里连接 GitHub');
     if (code === 'network') return t('连不上小小东会员站，稍后再试');
+    // 撤回不了（和扩展的 GitHub 问题 #67 一样）：关了的、有人留过言的去 GitHub 上处理
+    if (code === 'issue_closed') return t('这个问题已经关了，去 GitHub 上处理');
+    if (code === 'issue_has_replies') return t('下面有人留过言了，去 GitHub 上处理');
     return t('没发出去，稍后再试');
   }
 
@@ -259,6 +266,8 @@ export class Github {
       const entries = await AutoTick.diaryEntries(tools, { today: this.plugin.now() });
       if (!entries.length) return;
       const result = await this.api.issuesState(G.issuesToAsk(entries).slice(0, 50));
+      // 记下每个问题在 GitHub 上的样子：牌子后面写「✓ 已完成 / 不做了 / 重复了」（和扩展一样，记在本机，打开就是上次看到的）
+      if (G.rememberIssueStates?.(result?.issues)) this.plugin.views?.().forEach((view) => view.queueRedraw());
       // 在 GitHub 上搬走了的：先把日记里的老地址换成新的，再按新地址打勾。
       // 一篇日记一次换好，每件事都从原来的地址换（#1→#2、#2→#1 对换也不乱）
       const moved = G.applyMoves(entries, result?.issues);
@@ -304,6 +313,66 @@ export class Github {
     this.plugin.registerDomEvent(window, 'focus', () => this.tick());
     if (this.firstTick) window.clearTimeout(this.firstTick);
     this.firstTick = window.setTimeout(() => { this.firstTick = 0; this.tick(); }, FIRST_TICK_MS);
+  }
+
+  // 牌子上那一句：{ status: open | done | not_planned | duplicate | deleted, label }（开着的不说）
+  badgeOf(issue) {
+    const badge = G.issueBadge(issue, G.issueState?.(issue.url));
+    const label = { open: '', done: t('已完成'), not_planned: t('不做了'), duplicate: t('重复了'), deleted: t('已删除') }[badge.status] || '';
+    return { status: badge.status, label };
+  }
+
+  // 改发到（和扩展的 GitHub 问题 #15 一样）：会员站搬过去，日记里的地址换成新的；提示里能撤销（搬回原来的项目）
+  async move({ file, todo, path, issue, to = '', back = null }) {
+    const repo = to || await this.pickRepo();
+    if (!repo || repo === issue.repo) return;
+    const name = repo.split('/').pop();
+    const moving = this.plugin.notify(`${name} · ${t('正在搬…')}`, [], 0);
+    let next = null;
+    try {
+      const result = await this.api.move({ repo: issue.repo, number: issue.number, to: repo, back });
+      next = G.parseIssueUrl(result?.url);
+      if (!next) throw Object.assign(new Error('github_unavailable'), { code: 'github_unavailable' });
+    } catch (error) {
+      moving?.hide();
+      this.plugin.notify(this.errorText(error), [], 8000);
+      return;
+    }
+    moving?.hide();
+    G.rememberIssueStates?.([{ repo: next.repo, number: next.number, state: 'open' }]);
+    const after = G.replaceIssueUrl(todo.text, issue.url, next.url);
+    await this.plugin.editTodoText(file, path, todo.text, () => after);
+    if (!back) {
+      this.settings.recent = G.pushRecent(this.settings.recent, next.repo);
+      await this.plugin.saveSettings();
+    }
+    const label = back ? t('搬回了 {name} #{number}', { name, number: next.number }) : t('搬到了 {name} #{number}', { name, number: next.number });
+    this.plugin.notify(label, back ? [] : [{
+      label: t('撤销'),
+      run: () => this.move({ file, todo: { ...todo, text: after }, path, issue: next, to: issue.repo, back: { repo: issue.repo, number: issue.number } })
+    }], 8000);
+  }
+
+  // 撤回（和扩展的 GitHub 问题 #67 一样）：能删就删，删不了关成「不打算做」；日记里那件事留着，只拿掉问题地址
+  async withdraw({ file, todo, path, issue }) {
+    const busy = this.plugin.notify(t('正在撤回…'), [], 0);
+    let result;
+    try {
+      result = await this.api.withdraw({ repo: issue.repo, number: issue.number });
+    } catch (error) {
+      busy?.hide();
+      const code = String(error?.code || '');
+      this.plugin.notify(this.errorText(error), ['issue_closed', 'issue_has_replies'].includes(code)
+        ? [{ label: t('在 GitHub 打开'), run: () => window.open(issue.url) }] : [], 8000);
+      return false;
+    }
+    busy?.hide();
+    await this.plugin.editTodoText(file, path, todo.text, (text) => G.replaceIssueUrl(text, issue.url, '\u0000').replace(/[ \t]*\u0000/g, ''));
+    const name = issue.repo.split('/').pop();
+    this.plugin.notify(result?.how === 'closed'
+      ? t('已撤回。没有删除的权限，GitHub 上的 {name} #{number} 关掉了', { name, number: issue.number })
+      : t('已撤回，GitHub 上的 {name} #{number} 删掉了', { name, number: issue.number }), [], 6000);
+    return true;
   }
 
   issueOf(text) {

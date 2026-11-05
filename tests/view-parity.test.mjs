@@ -54,12 +54,12 @@ test('the new words are in all 13 languages', () => {
 });
 
 // 第二轮（2026-11-05，用户点头）：多选批量、拖动排序、两件之间加一条、加子任务——都和扩展一样
-test('multi-select: ⌘/Ctrl/Shift click picks rows; an ink bar with 完成 · 标签 · 复制 · 明天 · 删除; right-click on picked rows is the batch menu', () => {
+test('multi-select: ⌘/Ctrl/Shift click picks rows; an ink bar with 完成 · 标签 · 复制 · 移到… · 删除 · ⋯; right-click on picked rows is the batch menu', () => {
   assert.match(view, /if \(!\(event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey\)\) return;[\s\S]*?this\.pickGesture\(key, event\.shiftKey\);/);
-  assert.match(view, /act\(allDone \? t\('取消完成'\) : t\('完成'\), \(\) => this\.batch\('done'\)\);\n {4}act\(t\('标签'\)[\s\S]*?act\(t\('复制'\), \(\) => this\.batch\('copy'\)\);\n {4}act\(t\('明天'\), \(\) => this\.batch\('tomorrow'\)\);\n {4}act\(t\('删除'\), \(\) => this\.batch\('delete'\)\);/);
+  assert.match(view, /act\(allDone \? t\('取消完成'\) : t\('完成'\), \(\) => this\.batch\('done'\)\);\n {4}act\(t\('标签'\)[\s\S]*?act\(t\('复制'\), \(\) => this\.batch\('copy'\)\);\n {4}act\(t\('移到…'\), \(button\) => this\.moveMenu\(\)\.showAtPosition\(above\(button\)\)\);\n {4}act\(t\('删除'\), \(\) => this\.batch\('delete'\)\);/);
   assert.match(view, /if \(this\.picked\.size && this\.picked\.has\(key\)\) \{ this\.batchMenu\(\)\.showAtMouseEvent\(event\); return; \}/);
   // 每一样都能撤销：日记这期间没再改过就整篇换回去；移到明天的也从明天那篇拿回来
-  assert.match(view, /if \(content !== after\) return content;\n {10}ok = true;\n {10}return before;/);
+  assert.match(view, /if \(content !== after\) return content;\n {8}ok = true;\n {8}return before;/);
   assert.match(view, /undoBrought\(content, record, section, parser\)\?\.content \?\? content/);
   assert.match(css, /\.yaoji-item\.is-picked,\n\.yaoji-item\.is-picked:hover \{[^}]*box-shadow: inset 2px 0 0 var\(--yaoji-ink\);/);
   assert.match(css, /\.yaoji-pick-bar \{[^}]*position: sticky;[^}]*background: var\(--yaoji-ink\);/);

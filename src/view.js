@@ -6,7 +6,7 @@
 // 全按日记文件画：点方框、星标、改字、删除都是改文件，文件一变（这里改的、在笔记里改的、手机同步来的）就重画。
 import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
-import { addDays, dateKey, editTodo, editTodos, insertTodo, mergeIntoToday, moveTodo, readTodos, restoreTodo, takeTodo, takeTodos, undoBrought } from './today.js';
+import { addDays, dateKey, editTodo, editTodos, insertTodo, mergeIntoToday, mergeTodos, moveTodo, readTodos, restoreTodo, takeTodo, takeTodos, undoBrought } from './today.js';
 import { ISSUE_URL_RE } from './github.js';
 import { MilestonesModal, reachedMessage } from './milestones.js';
 import G from './vendor/github-issues.js';
@@ -46,6 +46,18 @@ export function withTag(text, tag) {
   return has ? String(text || '') : [`${first} #${clean}`, ...rest].join('\n');
 }
 
+// 多选「改成同一句」（和扩展的 GitHub 问题 #89 一样）：字换成同一句，各自的图片、文档和 GitHub 地址留着接在后面
+const EMBED_RE = /!\[\[[^\]\n]+\]\]|!\[[^\]\n]*\]\([^)\n]+\)/g;
+export function renameTo(text, words) {
+  const value = String(text || '');
+  const kept = [...(value.match(EMBED_RE) || []), ...G.findIssueUrls(value).map((issue) => issue.url)];
+  return [String(words || '').trim(), ...kept].filter(Boolean).join(' ');
+}
+
+// 勾掉一件后那一行「撤销」留多久（和扩展的 GitHub 问题 #99 方案 C 一样）；⌘Z 能撤多久以前的
+const ROW_UNDO_MS = 4000;
+const UNDO_WINDOW_MS = 60 * 1000;
+
 export const VIEW_TYPE = 'yaoji-today-view';
 export const VIEW_ICON = 'calendar-check';
 
@@ -58,6 +70,11 @@ export class TodayView extends ItemView {
     this.date = null; // null = 跟着今天走
     this.renderToken = 0;
     this.redrawTimer = 0;
+    // 刚勾掉、还能撤的那一行；⌘Z 撤的是最后一件能撤的事
+    this.rowUndo = null;
+    this.rowUndoTimer = 0;
+    this.lastUndo = null;
+    this.renaming = false;
   }
 
   getViewType() { return VIEW_TYPE; }
@@ -72,6 +89,8 @@ export class TodayView extends ItemView {
     const root = this.contentEl;
     root.empty();
     root.addClass('yaoji-today');
+    // 这一栏自己能拿焦点：点方框以后清单重画、那个方框没了，焦点还留在这一栏里，⌘Z 照样收得到
+    root.setAttribute('tabindex', '-1');
 
     // 标头一行：「今天 · 11/5 · 周四」、吉日、做完几件都在这一行（以前做完几件单独占一行，和扩展不一样）
     this.headerEl = root.createDiv({ cls: 'yaoji-head' });
@@ -91,6 +110,15 @@ export class TodayView extends ItemView {
       if (event.key === 'Escape' && this.picked.size && !event.target.closest?.('textarea, input')) {
         event.preventDefault();
         this.clearPicked();
+      }
+      // ⌘Z / Ctrl+Z（和扩展一样）：在这一栏里、不在打字时，撤最后一件能撤的（勾掉、删掉、批量、做了一次、改发到）
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && String(event.key).toLowerCase() === 'z'
+        && !event.target.closest?.('textarea, input:not([type="checkbox"]), [contenteditable="true"]')) {
+        const entry = this.lastUndo;
+        if (!entry || entry.used || Date.now() - entry.at > UNDO_WINDOW_MS) return;
+        event.preventDefault();
+        event.stopPropagation();
+        entry.fire();
       }
     });
 
@@ -129,6 +157,78 @@ export class TodayView extends ItemView {
 
   async onClose() {
     window.clearTimeout(this.redrawTimer);
+    window.clearTimeout(this.rowUndoTimer);
+  }
+
+  // 记下一件能撤的事：提示里的「撤销」和 ⌘Z 用的是同一份，撤过一次就不再撤
+  remember(run) {
+    const entry = { at: Date.now(), used: false, fire: async () => {
+      if (entry.used) return;
+      entry.used = true;
+      if (this.lastUndo === entry) this.lastUndo = null;
+      await run();
+    } };
+    this.lastUndo = entry;
+    return entry;
+  }
+
+  // ---------- 勾掉一件（和扩展的 GitHub 问题 #99 方案 C 一样，照「提醒事项」）----------
+  // 不出提示：就在那一行右边「撤销」，底下一道细线走完（4 秒）就收起；⌘Z 也行。写了 #里程碑 的另外说刻上了第几个
+  toggleDone(todo, path, sourcePath) {
+    const reaching = !todo.checked;
+    const key = path.join('.');
+    if (this.rowUndo?.key === key) this.clearRowUndo();
+    return this.change(todo, path, (item) => { item.checked = !item.checked; }, sourcePath).then(async (ok) => {
+      if (!ok || !reaching) return;
+      const entry = this.remember(() => {
+        this.clearRowUndo();
+        return this.change({ ...todo, checked: true }, path, (item) => { item.checked = false; }, sourcePath);
+      });
+      window.clearTimeout(this.rowUndoTimer);
+      this.rowUndo = { key, text: todo.text, until: Date.now() + ROW_UNDO_MS, entry };
+      this.rowUndoTimer = window.setTimeout(() => this.clearRowUndo(), ROW_UNDO_MS);
+      this.paintRowUndo();
+      const message = await reachedMessage(this.plugin, todo);
+      if (message) this.plugin.notify(message, [], 4000);
+    });
+  }
+
+  clearRowUndo() {
+    window.clearTimeout(this.rowUndoTimer);
+    const state = this.rowUndo;
+    this.rowUndo = null;
+    if (!state) return;
+    const row = this.rows?.find((entry) => entry.key === state.key)?.el;
+    row?.querySelectorAll(':scope > .yaoji-row-undo, :scope > .yaoji-row-timer').forEach((el) => el.remove());
+    row?.removeClass('has-row-undo');
+  }
+
+  // row：正在画的这一行（重画时接着画上，细线从剩下的那截接着走）
+  paintRowUndo(row = null) {
+    const state = this.rowUndo;
+    if (!state) return;
+    const left = state.until - Date.now();
+    if (left <= 0 || state.entry.used) { this.clearRowUndo(); return; }
+    const target = row || this.rows?.find((entry) => entry.key === state.key && entry.todo.text === state.text)?.el;
+    if (!target || target.querySelector(':scope > .yaoji-row-undo')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'yaoji-row-undo';
+    button.textContent = t('撤销');
+    button.setAttribute('aria-label', t('撤销完成'));
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      state.entry.fire();
+    });
+    button.addEventListener('dblclick', (event) => event.stopPropagation());
+    const timer = document.createElement('i');
+    timer.className = 'yaoji-row-timer';
+    timer.setAttribute('aria-hidden', 'true');
+    timer.style.animationDuration = `${ROW_UNDO_MS}ms`;
+    timer.style.animationDelay = `-${ROW_UNDO_MS - left}ms`;
+    target.addClass('has-row-undo');
+    target.insertBefore(button, target.querySelector(':scope > .yaoji-more'));
+    target.appendChild(timer);
   }
 
   queueRedraw() {
@@ -153,6 +253,7 @@ export class TodayView extends ItemView {
     const content = file ? await this.app.vault.read(file) : '';
     if (token !== this.renderToken) return;
     const todos = readTodos(content, this.plugin.settings.section, this.plugin.parser);
+    const hadFocus = this.contentEl.contains(document.activeElement);
 
     this.drawHead(date, todos);
     this.listEl.empty();
@@ -185,6 +286,7 @@ export class TodayView extends ItemView {
     }
     this.drawPickBar();
     this.drawLeft();
+    if (hadFocus && !this.contentEl.contains(document.activeElement)) this.contentEl.focus({ preventScroll: true });
   }
 
   // 标头一行（和扩展一样）：「今天 · 11/5 · 周四」，吉日那天后面一个金色的「吉」（指上去写是哪位值神）；
@@ -258,13 +360,7 @@ export class TodayView extends ItemView {
     box.setAttribute('aria-label', todo.checked ? t('标为未完成') : t('完成'));
     box.addEventListener('click', (event) => {
       event.preventDefault();
-      const reaching = !todo.checked;
-      this.change(todo, path, (item) => { item.checked = !item.checked; }, sourcePath).then(async (ok) => {
-        // 写了 #里程碑 的（和扩展的 GitHub 问题 #97 一样）：提示里说刻上了第几个
-        if (!ok || !reaching) return;
-        const message = await reachedMessage(this.plugin, todo);
-        if (message) this.plugin.notify(message, [], 4000);
-      });
+      this.toggleDone(todo, path, sourcePath);
     });
 
     const body = row.createDiv({ cls: 'yaoji-body' });
@@ -336,6 +432,12 @@ export class TodayView extends ItemView {
       badge.createSpan({ cls: 'yaoji-issue-name', text: issue.repo.split('/').pop() });
       const link = badge.createEl('a', { cls: 'yaoji-issue-num', text: `#${issue.number}`, href: issue.url });
       link.addEventListener('click', (event) => { event.preventDefault(); window.open(issue.url); });
+      // GitHub 上关了：后面跟一句「✓ 已完成 / 不做了 / 重复了」，删掉了的写「已删除」（和扩展一样；开着的不多说）
+      const state = this.plugin.github?.badgeOf?.(issue);
+      if (state?.label) {
+        badge.addClass(`is-${state.status.replace('_', '-')}`);
+        badge.createSpan({ cls: 'yaoji-issue-state', text: `${state.status === 'done' ? '✓ ' : ''}${state.label}` });
+      }
     }
 
     // 双击这一件就地改字（和扩展一样）：回车存，Shift+回车换行，Esc 不改，点别处也存
@@ -363,6 +465,7 @@ export class TodayView extends ItemView {
       if (this.picked.size) this.clearPicked();
       this.menuFor(todo, path, sourcePath, counted, row, text).showAtMouseEvent(event);
     });
+    if (this.rowUndo?.key === key && this.rowUndo.text === todo.text) this.paintRowUndo(row);
     return row;
   }
 
@@ -372,7 +475,7 @@ export class TodayView extends ItemView {
     menu.addItem((item) => item
       .setTitle(todo.checked ? t('标为未完成') : t('完成'))
       .setIcon(todo.checked ? 'square' : 'check-square')
-      .onClick(() => this.change(todo, path, (target) => { target.checked = !target.checked; }, sourcePath)));
+      .onClick(() => this.toggleDone(todo, path, sourcePath)));
     menu.addItem((item) => item
       .setTitle(t('编辑'))
       .setIcon('pencil')
@@ -409,16 +512,33 @@ export class TodayView extends ItemView {
       .setTitle(t('复制文字'))
       .setIcon('copy')
       .onClick(() => this.copyText(todo)));
-    // 发到 GitHub（会员）：发过的给「在 GitHub 打开 #42」；登录了、连着 GitHub 才有「发到 GitHub」
-    const issue = this.plugin.github?.issueOf(todo.text);
+    // 发到 GitHub（会员）：发过的收成一行「项目 #44 ›」（和扩展的 GitHub 问题 #91 方案 A 一样，照「访达」的「共享 ›」），
+    // 指上去是 打开 · 复制链接 · 改发到 · 撤回；登录了、连着 GitHub 才有「发到 GitHub」。GitHub 上删掉了的，可以重新发
+    const github = this.plugin.github;
+    const issue = github?.issueOf(todo.text);
     const file = this.plugin.fileAt(sourcePath);
-    if (issue || (this.plugin.github?.ready() && file)) menu.addSeparator();
-    if (issue) {
-      menu.addItem((item) => item
-        .setTitle(t('在 GitHub 打开 #{number}', { number: issue.number }))
-        .setIcon('github')
-        .onClick(() => window.open(issue.url)));
-    } else if (this.plugin.github?.ready() && file) {
+    const deleted = issue && github?.badgeOf?.(issue)?.status === 'deleted';
+    if (issue || (github?.ready() && file)) menu.addSeparator();
+    if (issue && !deleted) {
+      const fill = (sub) => {
+        sub.addItem((item) => item.setTitle(t('在 GitHub 打开')).setIcon('external-link').onClick(() => window.open(issue.url)));
+        sub.addItem((item) => item.setTitle(t('复制链接')).setIcon('link').onClick(() => this.copyLink(issue.url)));
+        if (github?.ready() && file) {
+          sub.addItem((item) => item.setTitle(t('改发到')).setIcon('arrow-right-left').onClick(() => github.move({ file, todo, path, issue })));
+          sub.addSeparator();
+          sub.addItem((item) => { item.setTitle(t('撤回')).setIcon('undo-2').onClick(() => this.askWithdraw(row, todo, path, sourcePath, issue)); item.setWarning?.(true); });
+        }
+      };
+      const name = `${issue.repo.split('/').pop()} #${issue.number}`;
+      let sub = null;
+      menu.addItem((item) => {
+        item.setTitle(name).setIcon('github');
+        // 新一点的 Obsidian 有子菜单；没有就平铺在这一组里
+        sub = typeof item.setSubmenu === 'function' ? item.setSubmenu() : null;
+        if (!sub) item.onClick(() => window.open(issue.url));
+      });
+      if (sub) fill(sub); else fill(menu);
+    } else if (github?.ready() && file) {
       menu.addItem((item) => item
         .setTitle(t('发到 GitHub'))
         .setIcon('send')
@@ -589,28 +709,106 @@ export class TodayView extends ItemView {
     return [...this.picked.values()].map(({ path, text }) => ({ path, text }));
   }
 
-  // 底下那一条（墨色，和扩展一样）：已选 N 件 · 完成 · 标签 · 复制 · 明天 · 删除 · ×
+  // 底下那一条（墨色，和扩展一样）：已选 N 件 · 完成 · 标签 · 复制 · 移到… · 删除 · ⋯ · ×
+  // 「⋯」里是改成同一句、星标、合并成一条。改成同一句时这一条换成「N 件改成 [框] 改好 ×」（框常驻在这一条上，不放进菜单）
   drawPickBar() {
     const bar = this.pickBar;
     if (!bar) return;
-    bar.empty();
     const count = this.picked.size;
+    if (!count) this.renaming = false;
+    // 正在写的时候清单重画了（文件刚改过、又选了一件）：只换件数，框和里面的字不动
+    const live = this.renaming && bar.hasClass('is-renaming') ? bar.querySelector('.yaoji-pick-rename-count') : null;
+    if (live) { live.setText(t('{count} 件改成', { count })); return; }
+    bar.empty();
     bar.toggleClass('is-hidden', !count);
+    bar.toggleClass('is-renaming', this.renaming);
     if (!count) return;
-    bar.createSpan({ cls: 'yaoji-pick-count', text: t('已选 {count} 件', { count }) });
+    if (this.renaming) { this.drawRenameBar(bar, count); return; }
+    // 窄的侧栏里放不下「已选 N 件」：只写数字（styles.css 按这一栏的宽度换）
+    const counter = bar.createSpan({ cls: 'yaoji-pick-count', attr: { 'aria-label': t('已选 {count} 件', { count }) } });
+    counter.createSpan({ cls: 'yaoji-pick-count-full', text: t('已选 {count} 件', { count }) });
+    counter.createSpan({ cls: 'yaoji-pick-count-short', text: String(count), attr: { 'aria-hidden': 'true' } });
     const allDone = [...this.picked.values()].every((item) => item.todo.checked);
     const act = (label, run) => {
       const button = bar.createEl('button', { cls: 'yaoji-pick-act', text: label });
       button.addEventListener('click', (event) => { event.stopPropagation(); run(button); });
+      return button;
     };
+    const above = (button) => { const rect = button.getBoundingClientRect(); return { x: rect.left, y: rect.top - 4 }; };
     act(allDone ? t('取消完成') : t('完成'), () => this.batch('done'));
-    act(t('标签'), (button) => { const rect = button.getBoundingClientRect(); this.tagMenu().showAtPosition({ x: rect.left, y: rect.top - 4 }); });
+    act(t('标签'), (button) => this.tagMenu().showAtPosition(above(button)));
     act(t('复制'), () => this.batch('copy'));
-    act(t('明天'), () => this.batch('tomorrow'));
+    act(t('移到…'), (button) => this.moveMenu().showAtPosition(above(button)));
     act(t('删除'), () => this.batch('delete'));
+    const more = bar.createEl('button', { cls: 'yaoji-pick-more clickable-icon', attr: { 'aria-label': t('更多') } });
+    setIcon(more, 'more-horizontal');
+    more.addEventListener('click', (event) => { event.stopPropagation(); this.pickMoreMenu().showAtPosition(above(more)); });
     const close = bar.createEl('button', { cls: 'yaoji-pick-close clickable-icon', attr: { 'aria-label': t('取消选择') } });
     setIcon(close, 'x');
     close.addEventListener('click', () => this.clearPicked());
+  }
+
+  drawRenameBar(bar, count) {
+    const label = bar.createEl('label', { cls: 'yaoji-pick-rename' });
+    label.createSpan({ cls: 'yaoji-pick-rename-count', text: t('{count} 件改成', { count }) });
+    const input = label.createEl('input', { type: 'text', cls: 'yaoji-pick-input', attr: { placeholder: t('写成同一句'), 'aria-label': t('写成同一句'), spellcheck: 'false' } });
+    const ok = bar.createEl('button', { cls: 'yaoji-pick-act', text: t('改好') });
+    const close = bar.createEl('button', { cls: 'yaoji-pick-close clickable-icon', attr: { 'aria-label': t('取消') } });
+    setIcon(close, 'x');
+    const submit = () => {
+      const value = input.value.trim();
+      if (!value) { input.focus(); return; }
+      this.renaming = false;
+      this.batch('rename', value);
+    };
+    const stop = () => { this.renaming = false; this.drawPickBar(); };
+    ok.addEventListener('click', (event) => { event.stopPropagation(); submit(); });
+    close.addEventListener('click', (event) => { event.stopPropagation(); stop(); });
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); submit(); }
+      else if (event.key === 'Escape') { event.preventDefault(); stop(); }
+    });
+    window.setTimeout(() => input.focus(), 0);
+  }
+
+  startRename() {
+    this.renaming = true;
+    this.drawPickBar();
+  }
+
+  // 移到…（和扩展一样）：明天、后天、下周一（下周一和前两个重了就不列）；后面写着是哪天
+  moveDays() {
+    const today = this.shownDate();
+    const locale = LOCALES[language()] || language();
+    // 「11/6 周五」：日期和星期分开写（一起格式化时中文会挤成「11/6周五」）
+    const label = (date) => `${new Intl.DateTimeFormat(locale, { month: 'numeric', day: 'numeric' }).format(date)} ${new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)}`;
+    const tomorrow = addDays(today, 1);
+    const after = addDays(today, 2);
+    let monday = addDays(today, 1);
+    while (monday.getDay() !== 1) monday = addDays(monday, 1);
+    const days = [{ name: t('明天'), date: tomorrow }, { name: t('后天'), date: after }];
+    if (dateKey(monday) !== dateKey(tomorrow) && dateKey(monday) !== dateKey(after)) days.push({ name: t('下周一'), date: monday });
+    return days.map((day) => ({ ...day, hint: label(day.date) }));
+  }
+
+  moveMenu() {
+    const menu = new Menu();
+    for (const day of this.moveDays()) {
+      menu.addItem((item) => item.setTitle(`${day.name} · ${day.hint}`).setIcon('arrow-right').onClick(() => this.batch('move', { date: day.date, label: day.name })));
+    }
+    return menu;
+  }
+
+  pickMoreMenu() {
+    const items = [...this.picked.values()];
+    const allStar = items.every((item) => item.todo.highlighted);
+    const menu = new Menu();
+    menu.addItem((item) => item.setTitle(t('改成同一句…')).setIcon('pencil').onClick(() => window.setTimeout(() => this.startRename(), 0)));
+    menu.addItem((item) => item.setTitle(allStar ? t('取消星标') : t('星标')).setIcon('star').onClick(() => this.batch('star')));
+    menu.addItem((item) => { item.setTitle(t('合并成一条')).setIcon('combine').onClick(() => this.batch('merge')); if (items.length < 2) item.setDisabled?.(true); });
+    return menu;
   }
 
   batchMenu() {
@@ -623,7 +821,11 @@ export class TodayView extends ItemView {
     menu.addItem((item) => item.setTitle(allDone ? t('取消完成') : t('完成')).setIcon('check').onClick(() => this.batch('done')));
     menu.addItem((item) => item.setTitle(allStar ? t('取消星标') : t('星标')).setIcon('star').onClick(() => this.batch('star')));
     menu.addItem((item) => item.setTitle(t('复制')).setIcon('copy').onClick(() => this.batch('copy')));
-    menu.addItem((item) => item.setTitle(t('明天')).setIcon('arrow-right').onClick(() => this.batch('tomorrow')));
+    for (const day of this.moveDays()) {
+      menu.addItem((item) => item.setTitle(`${day.name} · ${day.hint}`).setIcon('arrow-right').onClick(() => this.batch('move', { date: day.date, label: day.name })));
+    }
+    menu.addItem((item) => item.setTitle(t('改成同一句…')).setIcon('pencil').onClick(() => window.setTimeout(() => this.startRename(), 0)));
+    menu.addItem((item) => { item.setTitle(t('合并成一条')).setIcon('combine').onClick(() => this.batch('merge')); if (items.length < 2) item.setDisabled?.(true); });
     menu.addSeparator();
     menu.addItem((item) => { item.setTitle(t('删除')).setIcon('trash-2').onClick(() => this.batch('delete')); item.setWarning?.(true); });
     return menu;
@@ -689,7 +891,11 @@ export class TodayView extends ItemView {
     let moved = [];
     await this.app.vault.process(file, (content) => {
       before = content;
-      if (kind === 'delete' || kind === 'tomorrow') {
+      if (kind === 'merge') {
+        after = mergeTodos(content, targets, section, parser);
+        return after ?? content;
+      }
+      if (kind === 'delete' || kind === 'move') {
         const taken = takeTodos(content, targets, section, parser);
         if (!taken) return content;
         moved = taken.removed;
@@ -701,19 +907,20 @@ export class TodayView extends ItemView {
       const change = {
         done: (todo) => { todo.checked = !allDone; },
         star: (todo) => { todo.highlighted = !allStar; },
-        tag: (todo) => { todo.text = withTag(todo.text, value); }
+        tag: (todo) => { todo.text = withTag(todo.text, value); },
+        rename: (todo) => { todo.text = renameTo(todo.text, value); }
       }[kind];
       after = change ? editTodos(content, targets, change, section, parser) : null;
       return after ?? content;
     });
     if (after === null) { this.plugin.notify(t('日记刚改过，再选一次'), [], 4000); this.clearPicked(); this.redraw(); return; }
-    let tomorrowFile = null;
+    let dayFile = null;
     let record = null;
-    if (kind === 'tomorrow') {
-      // 先写进明天那篇（没有就照模板建），再从这一天拿掉（上面已经拿掉了）；写不进明天就整篇换回去
+    if (kind === 'move') {
+      // 先写进那一天（没有就照模板建），再从这一天拿掉（上面已经拿掉了）；写不进那一天就整篇换回去
       try {
-        tomorrowFile = await this.plugin.noteFor(addDays(this.shownDate(), 1));
-        await this.app.vault.process(tomorrowFile, (content) => {
+        dayFile = await this.plugin.noteFor(value.date);
+        await this.app.vault.process(dayFile, (content) => {
           const merged = mergeIntoToday(content, moved, section, parser);
           record = merged.record;
           return merged.content;
@@ -730,23 +937,58 @@ export class TodayView extends ItemView {
       done: t('{count} 件都改好了', { count }),
       star: t('{count} 件都改好了', { count }),
       tag: t('{count} 件加上了 #{tag}', { count, tag: value }),
+      rename: t('{count} 件都改成了同一句', { count }),
+      merge: t('{count} 件合成了一条', { count }),
       delete: t('删掉了 {count} 件', { count }),
-      tomorrow: t('{count} 件移到了明天', { count })
+      move: t('{count} 件移到了 {day}', { count, day: value?.label || '' })
     }[kind];
     this.clearPicked();
-    this.plugin.notify(message, [{
-      label: t('撤销'),
-      run: async () => {
-        let ok = false;
-        await this.app.vault.process(file, (content) => {
-          if (content !== after) return content;
-          ok = true;
-          return before;
-        });
-        if (ok && tomorrowFile && record) await this.app.vault.process(tomorrowFile, (content) => undoBrought(content, record, section, parser)?.content ?? content);
-        if (!ok) this.plugin.notify(t('日记刚改过，撤销不了'), [], 4000);
-      }
-    }], 6000);
+    const entry = this.remember(async () => {
+      let ok = false;
+      await this.app.vault.process(file, (content) => {
+        if (content !== after) return content;
+        ok = true;
+        return before;
+      });
+      if (ok && dayFile && record) await this.app.vault.process(dayFile, (content) => undoBrought(content, record, section, parser)?.content ?? content);
+      if (!ok) this.plugin.notify(t('日记刚改过，撤销不了'), [], 4000);
+    });
+    this.plugin.notify(message, [{ label: t('撤销'), run: () => entry.fire() }], 6000);
+  }
+
+  async copyLink(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      this.plugin.notify(t('已复制'), [], 2000);
+    } catch {
+      this.plugin.notify(t('复制失败'), [], 3000);
+    }
+  }
+
+  // 撤回之前问一句（和扩展的 GitHub 问题 #67 一样）：牌子底下「GitHub 上的 #44 会删掉　撤回 · 不了」，光标停在「撤回」上
+  askWithdraw(row, todo, path, sourcePath, issue) {
+    const badge = row.querySelector('.yaoji-issue');
+    if (!badge || row.querySelector('.yaoji-issue-ask')) return;
+    const ask = document.createElement('div');
+    ask.className = 'yaoji-issue-ask';
+    badge.after(ask);
+    ask.createSpan({ text: t('GitHub 上的 #{number} 会删掉', { number: issue.number }) });
+    const yes = ask.createEl('button', { cls: 'yaoji-issue-act', text: t('撤回') });
+    const no = ask.createEl('button', { cls: 'yaoji-issue-act', text: t('不了') });
+    const close = () => ask.remove();
+    no.addEventListener('click', (event) => { event.stopPropagation(); close(); });
+    [yes, no].forEach((button) => button.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
+    }));
+    yes.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      ask.empty();
+      ask.createSpan({ text: t('正在撤回…') });
+      const file = this.plugin.fileAt(sourcePath);
+      const ok = file ? await this.plugin.github.withdraw({ file, todo, path, issue }) : false;
+      if (!ok) close();
+    });
+    yes.focus();
   }
 
   // 复制成一段纯文本（和扩展一样：连子任务、不带 Markdown 记号）
@@ -819,9 +1061,10 @@ export class TodayView extends ItemView {
     // 没写进去（这一行刚在别处改过）：不说「第 N 次」，清单重画成文件里的样子
     if (!(await this.change(todo, path, (item) => { item.text = after; }, sourcePath))) return;
     const text = TodoCount.label(before);
+    const entry = this.remember(() => this.change({ ...todo, text: after }, path, (item) => { item.text = before; }, sourcePath));
     this.plugin.notify(step > 0 ? t('{text} 第 {count} 次', { text, count }) : t('{text} 少记了一次', { text }), [{
       label: t('撤销'),
-      run: () => this.change({ ...todo, text: after }, path, (item) => { item.text = before; }, sourcePath)
+      run: () => entry.fire()
     }], 4000);
   }
 
@@ -840,12 +1083,10 @@ export class TodayView extends ItemView {
       return after;
     });
     if (after === null) { this.redraw(); return; }
-    this.plugin.notify(t('已删除'), [{
-      label: t('撤销'),
-      // 这期间又改过：不整篇换回去，把删掉的整块（子任务、勾选都在）放回原来的位置
-      run: () => this.app.vault.process(file, (content) => (
-        content === after ? before : restoreTodo(content, removed, this.plugin.settings.section, this.plugin.parser)
-      ))
-    }], 6000);
+    // 这期间又改过：不整篇换回去，把删掉的整块（子任务、勾选都在）放回原来的位置
+    const entry = this.remember(() => this.app.vault.process(file, (content) => (
+      content === after ? before : restoreTodo(content, removed, this.plugin.settings.section, this.plugin.parser)
+    )));
+    this.plugin.notify(t('已删除'), [{ label: t('撤销'), run: () => entry.fire() }], 6000);
   }
 }

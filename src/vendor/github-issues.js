@@ -130,6 +130,17 @@
   // 网址、[[笔记#标题]] 链接里面的 # 不是标签（汉字后面也算标签以后，「…/中文#锚点」「[[笔记#节]]」会被误认，#77）
   const NOT_TAG_SPANS_RE = /https?:\/\/[^\s<>"'）)\]]+|\[\[[^\]\n]*\]\]/g;
 
+  // 扩展页面能不能直接取这个网站的东西（设置里允许了「所有网站」或这一个）；不能就别取——取了会被跨域拦下，控制台报错（#93）
+  async function hostAccess(url) {
+    if (!/^https?:/i.test(String(url || ''))) return true;
+    try {
+      if (typeof chrome === 'undefined' || !chrome.permissions?.contains) return false;
+      return await chrome.permissions.contains({ origins: [`${new URL(url).origin}/*`] });
+    } catch {
+      return false;
+    }
+  }
+
   function findTags(text) {
     const value = String(text || '');
     const out = [];
@@ -584,6 +595,11 @@
       return this.requireClient().authorizedPost('/github/issues-state', { issues });
     }
 
+    // 项目菜单里的数（GitHub 问题 #95 方案 B）：每个项目开着几个、做完关了几个、since 以来做完关了几个
+    repoCounts(repos = [], since = '') {
+      return this.requireClient().authorizedPost('/github/repo-counts', { repos: repos.slice(0, 12), since });
+    }
+
     // 底栏「问题」：这些项目里还开着的问题（会员站最多看 12 个项目、每个 30 个）
     openIssues(repos = []) {
       return this.requireClient().authorizedPost('/github/open-issues', { repos: repos.slice(0, 12) });
@@ -632,7 +648,9 @@
       const tooLarge = (code) => Object.assign(new Error(code), { code });
       const read = async (item) => {
         if (item.kind === 'url') {
-          const response = await fetch(item.src);
+          // 没允许访问那个网站：直接写成链接，不去取（取了也被跨域拦下，控制台还报错，GitHub 问题 #93）
+          if (!(await hostAccess(item.src))) throw new Error('no_host_permission');
+          const response = await fetch(item.src, { credentials: 'omit' });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           return response.blob();
         }
