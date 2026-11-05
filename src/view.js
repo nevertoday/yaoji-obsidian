@@ -6,7 +6,7 @@
 // 全按日记文件画：点方框、星标、改字、删除都是改文件，文件一变（这里改的、在笔记里改的、手机同步来的）就重画。
 import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
-import { addDays, dateKey, editTodo, readTodos, restoreTodo, takeTodo } from './today.js';
+import { addDays, dateKey, editTodo, editTodos, insertTodo, mergeIntoToday, moveTodo, readTodos, restoreTodo, takeTodo, takeTodos, undoBrought } from './today.js';
 import { ISSUE_URL_RE } from './github.js';
 import G from './vendor/github-issues.js';
 import TodoCount from './vendor/todo-count.js';
@@ -34,6 +34,15 @@ function luckyDay(date) {
 // 做完几件（连子任务）
 function doneCount(list) {
   return (list || []).reduce((sum, todo) => sum + (todo.checked ? 1 : 0) + doneCount(todo.children), 0);
+}
+
+// 加标签：接在第一行后面，已经有的（不分大小写）不重复（和扩展的多选「标签」一样）
+export function withTag(text, tag) {
+  const clean = String(tag || '').replace(/^[#＃]/, '').trim();
+  if (!clean) return String(text || '');
+  const [first, ...rest] = String(text || '').split('\n');
+  const has = (G.findTags?.(String(text || '')) || []).some((hit) => hit.tag.toLowerCase() === clean.toLowerCase());
+  return has ? String(text || '') : [`${first} #${clean}`, ...rest].join('\n');
 }
 
 export const VIEW_TYPE = 'yaoji-today-view';
@@ -72,6 +81,17 @@ export class TodayView extends ItemView {
     });
     this.listEl = root.createDiv({ cls: 'yaoji-list' });
     this.leftEl = root.createDiv({ cls: 'yaoji-left' });
+    // 多选（和扩展的 GitHub 问题 #73 一样，照「访达」）：按住 ⌘ / Ctrl 点一件选上、再点取消，Shift 点选一段；
+    // 底下一条「已选 N 件 · 完成 · 标签 · 复制 · 明天 · 删除」，Esc 或 × 取消
+    this.picked = new Map();
+    this.lastPicked = '';
+    this.pickBar = root.createDiv({ cls: 'yaoji-pick-bar is-hidden' });
+    this.registerDomEvent(root, 'keydown', (event) => {
+      if (event.key === 'Escape' && this.picked.size && !event.target.closest?.('textarea, input')) {
+        event.preventDefault();
+        this.clearPicked();
+      }
+    });
 
     this.inputEl.addEventListener('keydown', (event) => {
       if (event.isComposing) return;
@@ -135,7 +155,9 @@ export class TodayView extends ItemView {
 
     this.drawHead(date, todos);
     this.listEl.empty();
+    this.rows = [];
     const sourcePath = file?.path || '';
+    this.sourcePath = sourcePath;
     const draw = (list, parentPath, depth, startIndex = 0) => {
       list.forEach((todo, offset) => {
         const index = startIndex + offset;
@@ -154,6 +176,13 @@ export class TodayView extends ItemView {
     shown.forEach(({ todo, index }) => draw([todo], [], 0, index));
     this.listEl.toggleClass('is-empty', !todos.length);
     if (!todos.length) this.listEl.createDiv({ cls: 'yaoji-empty', text: t('今天还没有待办') });
+    // 选着的还在（字对得上）就接着选着；文件改过、对不上的放下
+    for (const [key, item] of this.picked) {
+      const row = this.rows.find((entry) => entry.key === key);
+      if (!row || row.todo.text !== item.text) this.picked.delete(key);
+      else row.el.addClass('is-picked');
+    }
+    this.drawPickBar();
     this.drawLeft();
   }
 
@@ -195,6 +224,22 @@ export class TodayView extends ItemView {
 
   drawItem(todo, path, depth, sourcePath) {
     const row = this.listEl.createDiv({ cls: 'yaoji-item' });
+    const key = path.join('.');
+    row.dataset.key = key;
+    row.dataset.parent = path.slice(0, -1).join('.');
+    this.rows.push({ key, path, todo, el: row, depth });
+    // 拖动排序：指到这一件，左边出来一个把手，按住拖到同一层的别的位置（和扩展一样）
+    const grip = row.createSpan({ cls: 'yaoji-grip', attr: { 'aria-hidden': 'true' } });
+    setIcon(grip, 'grip-vertical');
+    grip.addEventListener('pointerdown', (event) => this.startDrag(event, row, todo, path));
+    // 按住 ⌘ / Ctrl / Shift 点：选上（不进编辑、不勾方框、不开链接）
+    row.addEventListener('click', (event) => {
+      if (!(event.metaKey || event.ctrlKey || event.shiftKey)) return;
+      if (event.target.closest('.yaoji-edit, .yaoji-grip')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.pickGesture(key, event.shiftKey);
+    }, true);
     row.toggleClass('is-done', !!todo.checked);
     row.toggleClass('is-star', !!todo.highlighted);
     row.style.setProperty('--depth', String(depth));
@@ -297,6 +342,9 @@ export class TodayView extends ItemView {
       event.preventDefault();
       // 不让 Obsidian 侧栏自己的右键菜单接着处理（它会把这个菜单关掉）
       event.stopPropagation();
+      // 多选时在选中的那几件上右键：批量操作（和扩展的 GitHub 问题 #83 一样）；在没选中的上右键放下多选
+      if (this.picked.size && this.picked.has(key)) { this.batchMenu().showAtMouseEvent(event); return; }
+      if (this.picked.size) this.clearPicked();
       this.menuFor(todo, path, sourcePath, counted, row, text).showAtMouseEvent(event);
     });
     return row;
@@ -329,6 +377,17 @@ export class TodayView extends ItemView {
           .setIcon('minus')
           .onClick(() => this.bump(todo, path, -1, sourcePath)));
       }
+    }
+    // 在下面加一条 / 添加子任务（和扩展一样）：先出一个空的输入框，写好回车才写进日记；做完的那件下面不加
+    if (!todo.checked) {
+      menu.addItem((item) => item
+        .setTitle(t('在下面加一条'))
+        .setIcon('list-plus')
+        .onClick(() => this.composeNear(row, todo, path, 'below', sourcePath)));
+      menu.addItem((item) => item
+        .setTitle(t('添加子任务'))
+        .setIcon('corner-down-right')
+        .onClick(() => this.composeNear(row, todo, path, 'child', sourcePath)));
     }
     menu.addItem((item) => item
       .setTitle(t('复制文字'))
@@ -395,6 +454,281 @@ export class TodayView extends ItemView {
       else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
     });
     input.addEventListener('blur', () => finish(true));
+  }
+
+  // ---------- 两件之间加一条 / 加子任务 ----------
+  // 输入框放在这件（连子任务）下面；子任务的往里缩一格。回车写进日记，Esc 或空着点别处就收起，不留空行
+  composeNear(row, todo, path, mode, sourcePath) {
+    this.listEl.querySelector('.yaoji-compose')?.remove();
+    const depth = path.length - 1 + (mode === 'child' ? 1 : 0);
+    let last = row;
+    const prefix = `${path.join('.')}.`;
+    for (const entry of this.rows) if (entry.key.startsWith(prefix)) last = entry.el;
+    const wrap = document.createElement('div');
+    wrap.className = 'yaoji-item yaoji-compose';
+    wrap.style.setProperty('--depth', String(depth));
+    last.after(wrap);
+    const input = wrap.createEl('textarea', { cls: 'yaoji-edit', attr: { rows: '1', placeholder: t('添加任务，回车保存'), 'aria-label': mode === 'child' ? t('添加子任务') : t('在下面加一条') } });
+    input.focus();
+    let done = false;
+    const finish = async (save) => {
+      if (done) return;
+      done = true;
+      const value = input.value.trim();
+      wrap.remove();
+      if (!save || !value) return;
+      const file = this.plugin.fileAt(sourcePath);
+      if (!file) return;
+      await this.app.vault.process(file, (content) => insertTodo(content, path, todo.text, value, mode, this.plugin.settings.section, this.plugin.parser)?.content ?? content);
+    };
+    input.addEventListener('keydown', (event) => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); finish(true); }
+      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+  }
+
+  // ---------- 拖动排序 ----------
+  // 只在同一层里挪（顶层和顶层、同一件的子任务之间）；拖的时候一道墨线指出会落在哪，松手才写进日记
+  startDrag(event, row, todo, path) {
+    if (event.button !== 0 || this.picked.size) return;
+    event.preventDefault();
+    const parent = row.dataset.parent;
+    const depth = path.length - 1;
+    const siblings = this.rows.filter((entry) => entry.el.dataset.parent === parent && entry.depth === depth);
+    if (siblings.length < 2) return;
+    // 每一件连它的子任务算一块
+    const blocks = siblings.map((entry) => {
+      const prefix = `${entry.key}.`;
+      const tail = [...this.rows].reverse().find((other) => other.key.startsWith(prefix))?.el || entry.el;
+      return { entry, top: entry.el.offsetTop, bottom: tail.offsetTop + tail.offsetHeight };
+    });
+    const line = this.listEl.createDiv({ cls: 'yaoji-drop-line' });
+    row.addClass('is-dragging');
+    let slot = -1;
+    const place = (clientY) => {
+      const y = clientY - this.listEl.getBoundingClientRect().top + this.listEl.scrollTop;
+      slot = blocks.findIndex((block) => y < (block.top + block.bottom) / 2);
+      if (slot === -1) slot = blocks.length;
+      const at = slot < blocks.length ? blocks[slot].top : blocks[blocks.length - 1].bottom;
+      line.style.top = `${at - 1}px`;
+      line.style.setProperty('--depth', String(depth));
+    };
+    place(event.clientY);
+    const move = (e) => place(e.clientY);
+    const end = async () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      line.remove();
+      row.removeClass('is-dragging');
+      const from = path[path.length - 1];
+      const before = slot < blocks.length ? blocks[slot].entry.path[depth] : null;
+      if (before === from || (before === null && from === Math.max(...siblings.map((s) => s.path[depth])))) return;
+      const file = this.plugin.fileAt(this.sourcePath);
+      if (!file) return;
+      await this.app.vault.process(file, (content) => moveTodo(content, path, todo.text, before, this.plugin.settings.section, this.plugin.parser) ?? content);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  }
+
+  // ---------- 多选 ----------
+  pickGesture(key, range) {
+    if (range && this.lastPicked) {
+      const keys = this.rows.map((entry) => entry.key);
+      const a = keys.indexOf(this.lastPicked);
+      const b = keys.indexOf(key);
+      if (a >= 0 && b >= 0) {
+        for (const entry of this.rows.slice(Math.min(a, b), Math.max(a, b) + 1)) this.setPicked(entry, true);
+        this.lastPicked = key;
+        this.drawPickBar();
+        return;
+      }
+    }
+    const entry = this.rows.find((item) => item.key === key);
+    if (entry) this.setPicked(entry, !this.picked.has(key));
+    this.lastPicked = key;
+    this.drawPickBar();
+  }
+
+  setPicked(entry, on) {
+    if (on) this.picked.set(entry.key, { path: entry.path, text: entry.todo.text, todo: entry.todo });
+    else this.picked.delete(entry.key);
+    entry.el.toggleClass('is-picked', on);
+  }
+
+  clearPicked() {
+    this.picked.clear();
+    this.lastPicked = '';
+    for (const entry of this.rows || []) entry.el.removeClass('is-picked');
+    this.drawPickBar();
+  }
+
+  pickedTargets() {
+    return [...this.picked.values()].map(({ path, text }) => ({ path, text }));
+  }
+
+  // 底下那一条（墨色，和扩展一样）：已选 N 件 · 完成 · 标签 · 复制 · 明天 · 删除 · ×
+  drawPickBar() {
+    const bar = this.pickBar;
+    if (!bar) return;
+    bar.empty();
+    const count = this.picked.size;
+    bar.toggleClass('is-hidden', !count);
+    if (!count) return;
+    bar.createSpan({ cls: 'yaoji-pick-count', text: t('已选 {count} 件', { count }) });
+    const allDone = [...this.picked.values()].every((item) => item.todo.checked);
+    const act = (label, run) => {
+      const button = bar.createEl('button', { cls: 'yaoji-pick-act', text: label });
+      button.addEventListener('click', (event) => { event.stopPropagation(); run(button); });
+    };
+    act(allDone ? t('取消完成') : t('完成'), () => this.batch('done'));
+    act(t('标签'), (button) => { const rect = button.getBoundingClientRect(); this.tagMenu().showAtPosition({ x: rect.left, y: rect.top - 4 }); });
+    act(t('复制'), () => this.batch('copy'));
+    act(t('明天'), () => this.batch('tomorrow'));
+    act(t('删除'), () => this.batch('delete'));
+    const close = bar.createEl('button', { cls: 'yaoji-pick-close clickable-icon', attr: { 'aria-label': t('取消选择') } });
+    setIcon(close, 'x');
+    close.addEventListener('click', () => this.clearPicked());
+  }
+
+  batchMenu() {
+    const menu = new Menu();
+    const items = [...this.picked.values()];
+    const allDone = items.every((item) => item.todo.checked);
+    const allStar = items.every((item) => item.todo.highlighted);
+    menu.addItem((item) => item.setTitle(t('已选 {count} 件', { count: items.length })).setIcon('check-square').setDisabled?.(true));
+    menu.addSeparator();
+    menu.addItem((item) => item.setTitle(allDone ? t('取消完成') : t('完成')).setIcon('check').onClick(() => this.batch('done')));
+    menu.addItem((item) => item.setTitle(allStar ? t('取消星标') : t('星标')).setIcon('star').onClick(() => this.batch('star')));
+    menu.addItem((item) => item.setTitle(t('复制')).setIcon('copy').onClick(() => this.batch('copy')));
+    menu.addItem((item) => item.setTitle(t('明天')).setIcon('arrow-right').onClick(() => this.batch('tomorrow')));
+    menu.addSeparator();
+    menu.addItem((item) => { item.setTitle(t('删除')).setIcon('trash-2').onClick(() => this.batch('delete')); item.setWarning?.(true); });
+    return menu;
+  }
+
+  // 加标签：今天这些事里用过的标签（用得多的在前），最后一项「新标签…」
+  tagMenu() {
+    const counts = new Map();
+    for (const entry of this.rows || []) {
+      for (const hit of G.findTags?.(String(entry.todo.text || '')) || []) {
+        const lower = hit.tag.toLowerCase();
+        const item = counts.get(lower) || { tag: hit.tag, count: 0 };
+        item.count += 1;
+        counts.set(lower, item);
+      }
+    }
+    const menu = new Menu();
+    [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 8).forEach(({ tag }) => {
+      menu.addItem((item) => item.setTitle(`#${tag}`).setIcon('hash').onClick(() => this.batch('tag', tag)));
+    });
+    menu.addItem((item) => item.setTitle(t('新标签…')).setIcon('plus').onClick(() => this.askTag()));
+    return menu;
+  }
+
+  // 新标签：底下那条换成一个小输入框，回车加上，Esc 回去
+  askTag() {
+    const bar = this.pickBar;
+    bar.empty();
+    const input = bar.createEl('input', { type: 'text', cls: 'yaoji-pick-input', attr: { placeholder: t('写一个标签'), 'aria-label': t('写一个标签') } });
+    input.focus();
+    input.addEventListener('keydown', (event) => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const tag = input.value.replace(/^[#＃]/, '').trim().replace(/\s+/g, '');
+        if (tag) this.batch('tag', tag); else this.drawPickBar();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.drawPickBar();
+      }
+    });
+  }
+
+  // 批量做一件事：改完提示里能撤销（日记这期间没再改过就整篇换回去）
+  async batch(kind, value) {
+    const targets = this.pickedTargets();
+    const items = [...this.picked.values()];
+    const count = targets.length;
+    if (!count) return;
+    if (kind === 'copy') {
+      const text = items.map((item) => PlainText.todoToPlainText(item.todo).text).join('\n');
+      try { await navigator.clipboard.writeText(text); this.plugin.notify(t('已复制 {count} 件', { count }), [], 2000); } catch { this.plugin.notify(t('复制失败'), [], 3000); }
+      this.clearPicked();
+      return;
+    }
+    const file = this.plugin.fileAt(this.sourcePath);
+    if (!file) return;
+    const section = this.plugin.settings.section;
+    const parser = this.plugin.parser;
+    let before = '';
+    let after = null;
+    let moved = [];
+    await this.app.vault.process(file, (content) => {
+      before = content;
+      if (kind === 'delete' || kind === 'tomorrow') {
+        const taken = takeTodos(content, targets, section, parser);
+        if (!taken) return content;
+        moved = taken.removed;
+        after = taken.content;
+        return after;
+      }
+      const allDone = items.every((item) => item.todo.checked);
+      const allStar = items.every((item) => item.todo.highlighted);
+      const change = {
+        done: (todo) => { todo.checked = !allDone; },
+        star: (todo) => { todo.highlighted = !allStar; },
+        tag: (todo) => { todo.text = withTag(todo.text, value); }
+      }[kind];
+      after = change ? editTodos(content, targets, change, section, parser) : null;
+      return after ?? content;
+    });
+    if (after === null) { this.plugin.notify(t('日记刚改过，再选一次'), [], 4000); this.clearPicked(); this.redraw(); return; }
+    let tomorrowFile = null;
+    let record = null;
+    if (kind === 'tomorrow') {
+      // 先写进明天那篇（没有就照模板建），再从这一天拿掉（上面已经拿掉了）；写不进明天就整篇换回去
+      try {
+        tomorrowFile = await this.plugin.noteFor(addDays(this.shownDate(), 1));
+        await this.app.vault.process(tomorrowFile, (content) => {
+          const merged = mergeIntoToday(content, moved, section, parser);
+          record = merged.record;
+          return merged.content;
+        });
+      } catch (error) {
+        console.error('[今日待办] 移到明天失败', error);
+        await this.app.vault.process(file, (content) => (content === after ? before : content));
+        this.plugin.notify(t('移不过去：{message}', { message: error?.message || error }), [], 6000);
+        this.clearPicked();
+        return;
+      }
+    }
+    const message = {
+      done: t('{count} 件都改好了', { count }),
+      star: t('{count} 件都改好了', { count }),
+      tag: t('{count} 件加上了 #{tag}', { count, tag: value }),
+      delete: t('删掉了 {count} 件', { count }),
+      tomorrow: t('{count} 件移到了明天', { count })
+    }[kind];
+    this.clearPicked();
+    this.plugin.notify(message, [{
+      label: t('撤销'),
+      run: async () => {
+        let ok = false;
+        await this.app.vault.process(file, (content) => {
+          if (content !== after) return content;
+          ok = true;
+          return before;
+        });
+        if (ok && tomorrowFile && record) await this.app.vault.process(tomorrowFile, (content) => undoBrought(content, record, section, parser)?.content ?? content);
+        if (!ok) this.plugin.notify(t('日记刚改过，撤销不了'), [], 4000);
+      }
+    }], 6000);
   }
 
   // 复制成一段纯文本（和扩展一样：连子任务、不带 Markdown 记号）

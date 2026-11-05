@@ -44,6 +44,7 @@
    规矩：一行只有一个记号；平时用不着的东西（翻天的箭头、「⋯」）指上去才出来；方角。 */
 
 .yaoji-today {
+  container-type: inline-size;
   --yaoji-ink: #111111;
   --yaoji-muted: #777777;
   --yaoji-line: #e7e7ea;
@@ -500,6 +501,132 @@
 
 .yaoji-item.is-editing .yaoji-more {
   display: none;
+}
+
+/* ---------- 第二轮（2026-11-05）：多选、拖动排序、两件之间加一条 ---------- */
+
+/* 拖动的把手：指到这一件，左边空白里出来；拖的时候那件淡下去，一道墨线指出会落在哪 */
+.yaoji-grip {
+  position: absolute;
+  inset-inline-start: calc(var(--depth, 0) * 24px);
+  top: 8px;
+  display: inline-flex;
+  width: 16px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  color: var(--yaoji-muted);
+  opacity: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.yaoji-grip svg {
+  width: 12px;
+  height: 12px;
+}
+
+.yaoji-item:hover .yaoji-grip {
+  opacity: 0.7;
+}
+
+.yaoji-item.is-dragging {
+  opacity: 0.4;
+}
+
+.yaoji-list {
+  position: relative;
+}
+
+.yaoji-drop-line {
+  position: absolute;
+  inset-inline: calc(16px + var(--depth, 0) * 24px) 16px;
+  height: 2px;
+  background: var(--yaoji-ink);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 两件之间加一条：一个空的输入框，缩进和那一层一样 */
+.yaoji-compose {
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
+
+/* 多选：选中的那几件左边一道墨线、底色深一点（和扩展一样） */
+.yaoji-item.is-picked,
+.yaoji-item.is-picked:hover {
+  background: color-mix(in srgb, var(--yaoji-ink) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--yaoji-ink);
+}
+
+/* 底下那一条：墨色、贴着侧边栏底部，「已选 N 件 · 完成 · 标签 · 复制 · 明天 · 删除 · ×」 */
+.yaoji-pick-bar {
+  position: sticky;
+  bottom: 8px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  margin: auto 8px 8px;
+  padding: 4px 4px 4px 8px;
+  background: var(--yaoji-ink);
+  color: var(--background-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.yaoji-pick-bar.is-hidden {
+  display: none;
+}
+
+.yaoji-pick-count {
+  margin-inline-end: auto;
+  padding-inline-end: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.yaoji-today button.yaoji-pick-act,
+.yaoji-today button.yaoji-pick-close {
+  height: 32px;
+  padding: 0 8px;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@container (max-width: 340px) {
+  .yaoji-today button.yaoji-pick-act { padding: 0 4px; }
+}
+
+.yaoji-today button.yaoji-pick-act:hover,
+.yaoji-today button.yaoji-pick-close:hover {
+  background: color-mix(in srgb, var(--background-primary) 14%, transparent);
+}
+
+.yaoji-today button.yaoji-pick-close {
+  color: color-mix(in srgb, var(--background-primary) 70%, transparent);
+}
+
+.yaoji-today input.yaoji-pick-input {
+  flex: 1;
+  height: 32px;
+  margin-inline-end: 4px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-primary) 14%, transparent);
+  color: inherit;
+  font: inherit;
 }
 
 /* 底下一行「以前还有 N 件没做完　全部带来」 */

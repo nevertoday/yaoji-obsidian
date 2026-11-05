@@ -52,3 +52,34 @@ test('the new words are in all 13 languages', () => {
     assert.equal(Object.keys(MESSAGES[key] || {}).length, 12, key);
   }
 });
+
+// 第二轮（2026-11-05，用户点头）：多选批量、拖动排序、两件之间加一条、加子任务——都和扩展一样
+test('multi-select: ⌘/Ctrl/Shift click picks rows; an ink bar with 完成 · 标签 · 复制 · 明天 · 删除; right-click on picked rows is the batch menu', () => {
+  assert.match(view, /if \(!\(event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey\)\) return;[\s\S]*?this\.pickGesture\(key, event\.shiftKey\);/);
+  assert.match(view, /act\(allDone \? t\('取消完成'\) : t\('完成'\), \(\) => this\.batch\('done'\)\);\n {4}act\(t\('标签'\)[\s\S]*?act\(t\('复制'\), \(\) => this\.batch\('copy'\)\);\n {4}act\(t\('明天'\), \(\) => this\.batch\('tomorrow'\)\);\n {4}act\(t\('删除'\), \(\) => this\.batch\('delete'\)\);/);
+  assert.match(view, /if \(this\.picked\.size && this\.picked\.has\(key\)\) \{ this\.batchMenu\(\)\.showAtMouseEvent\(event\); return; \}/);
+  // 每一样都能撤销：日记这期间没再改过就整篇换回去；移到明天的也从明天那篇拿回来
+  assert.match(view, /if \(content !== after\) return content;\n {10}ok = true;\n {10}return before;/);
+  assert.match(view, /undoBrought\(content, record, section, parser\)\?\.content \?\? content/);
+  assert.match(css, /\.yaoji-item\.is-picked,\n\.yaoji-item\.is-picked:hover \{[^}]*box-shadow: inset 2px 0 0 var\(--yaoji-ink\);/);
+  assert.match(css, /\.yaoji-pick-bar \{[^}]*position: sticky;[^}]*background: var\(--yaoji-ink\);/);
+});
+
+test('drag a grip to reorder within the same level; a line shows where it lands; written on drop with moveTodo', () => {
+  assert.match(view, /grip\.addEventListener\('pointerdown', \(event\) => this\.startDrag\(event, row, todo, path\)\);/);
+  assert.match(view, /const siblings = this\.rows\.filter\(\(entry\) => entry\.el\.dataset\.parent === parent && entry\.depth === depth\);/);
+  assert.match(view, /moveTodo\(content, path, todo\.text, before, this\.plugin\.settings\.section, this\.plugin\.parser\) \?\? content/);
+  assert.match(css, /\.yaoji-drop-line \{[^}]*background: var\(--yaoji-ink\);/);
+});
+
+test('在下面加一条 / 添加子任务 open an empty input first; nothing is written until Enter (Esc leaves no empty line)', () => {
+  assert.match(view, /\.setTitle\(t\('在下面加一条'\)\)[\s\S]*?this\.composeNear\(row, todo, path, 'below', sourcePath\)/);
+  assert.match(view, /\.setTitle\(t\('添加子任务'\)\)[\s\S]*?this\.composeNear\(row, todo, path, 'child', sourcePath\)/);
+  assert.match(view, /if \(!save \|\| !value\) return;[\s\S]*?insertTodo\(content, path, todo\.text, value, mode,/);
+});
+
+test('round-two words are in all 13 languages', () => {
+  for (const key of ['在下面加一条', '添加子任务', '已选 {count} 件', '取消完成', '标签', '复制', '明天', '取消选择', '新标签…', '写一个标签', '已复制 {count} 件', '{count} 件都改好了', '{count} 件加上了 #{tag}', '删掉了 {count} 件', '{count} 件移到了明天', '移不过去：{message}', '日记刚改过，再选一次', '日记刚改过，撤销不了']) {
+    assert.equal(Object.keys(MESSAGES[key] || {}).length, 12, key);
+  }
+});

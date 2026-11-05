@@ -577,3 +577,88 @@ export function readTodos(content, section, parser) {
   const found = parser.extractSection(String(content || ''), section);
   return found ? parser.parseTodos(found.content) : [];
 }
+
+// ---------- 侧边栏第二轮（2026-11-05，和浏览器扩展一样的习惯）：排顺序、两件之间加一条、加子任务、多选批量 ----------
+
+// 同一层里挪一件（连子任务、下面的说明一起）：before = 挪到原来第几件的前面（同一层里的下标，按挪之前算）；
+// 没有 before（null）就挪到这一层最后。字对不上（文件刚在别处改过）返回 null
+export function moveTodo(content, path, expectText, before, section, parser) {
+  const found = parser.extractSection(String(content || ''), section);
+  if (!found) return null;
+  const todos = parser.parseTodos(found.content);
+  const list = path.length > 1 ? todoAt(todos, path.slice(0, -1))?.children : todos;
+  const from = path[path.length - 1];
+  if (!list?.[from] || list[from].text !== expectText) return null;
+  let to = before === null || before === undefined ? list.length : Math.max(0, Math.min(Number(before), list.length));
+  if (to === from || to === from + 1) return String(content);
+  const [todo] = list.splice(from, 1);
+  if (to > from) to -= 1;
+  list.splice(to, 0, todo);
+  return rewrite(content, section, todos, parser);
+}
+
+// 加一件：mode = 'below' 放在这件下面（同一层），'child' 放成这件的最后一个子任务。返回 { content, path }
+export function insertTodo(content, path, expectText, text, mode, section, parser) {
+  const value = String(text || '').trim();
+  if (!value) return null;
+  const found = parser.extractSection(String(content || ''), section);
+  if (!found) return null;
+  const todos = parser.parseTodos(found.content);
+  const anchor = todoAt(todos, path);
+  if (!anchor || anchor.text !== expectText) return null;
+  const indent = Math.max(0, Number(anchor.indent) || 0);
+  if (mode === 'child') {
+    anchor.children = anchor.children || [];
+    anchor.children.push({ text: value, checked: false, highlighted: false, indent: indent + 1, children: [] });
+    const next = rewrite(content, section, todos, parser);
+    return next === null ? null : { content: next, path: [...path, anchor.children.length - 1] };
+  }
+  const list = path.length > 1 ? todoAt(todos, path.slice(0, -1)).children : todos;
+  const at = path[path.length - 1] + 1;
+  list.splice(at, 0, { text: value, checked: false, highlighted: false, indent, children: [] });
+  const next = rewrite(content, section, todos, parser);
+  return next === null ? null : { content: next, path: [...path.slice(0, -1), at] };
+}
+
+// 多选批量改：targets = [{ path, text }]；一件也对不上（文件刚改过）就整批不改，返回 null
+export function editTodos(content, targets, change, section, parser) {
+  const found = parser.extractSection(String(content || ''), section);
+  if (!found || !targets?.length) return null;
+  const todos = parser.parseTodos(found.content);
+  const items = targets.map(({ path, text }) => {
+    const todo = todoAt(todos, path);
+    return todo && todo.text === text ? todo : null;
+  });
+  if (items.some((item) => !item)) return null;
+  items.forEach((item, index) => change(item, index));
+  return rewrite(content, section, todos, parser);
+}
+
+// 多选批量删：从后往前删，子任务被父任务带走的不重复删。返回 { content, removed: [这几件，连子任务] }
+export function takeTodos(content, targets, section, parser) {
+  const found = parser.extractSection(String(content || ''), section);
+  if (!found || !targets?.length) return null;
+  const todos = parser.parseTodos(found.content);
+  const key = (path) => path.join('.');
+  const keys = new Set(targets.map(({ path }) => key(path)));
+  // 父任务也在里面的子任务不单算
+  const tops = targets.filter(({ path }) => !path.some((_, i) => i < path.length - 1 && keys.has(key(path.slice(0, i + 1)))));
+  for (const { path, text } of tops) {
+    const todo = todoAt(todos, path);
+    if (!todo || todo.text !== text) return null;
+  }
+  const removed = [];
+  const order = [...tops].sort((a, b) => {
+    for (let i = 0; i < Math.max(a.path.length, b.path.length); i += 1) {
+      const d = (b.path[i] ?? -1) - (a.path[i] ?? -1);
+      if (d) return d;
+    }
+    return 0;
+  });
+  for (const { path } of order) {
+    const list = path.length > 1 ? todoAt(todos, path.slice(0, -1)).children : todos;
+    removed.unshift(list.splice(path[path.length - 1], 1)[0]);
+  }
+  const next = rewrite(content, section, todos, parser);
+  return next === null ? null : { content: next, removed };
+}
