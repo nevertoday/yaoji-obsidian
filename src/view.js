@@ -278,7 +278,8 @@ export class TodayView extends ItemView {
     const issue = issues[0] || null;
     // 做了几次（扩展的 GitHub 问题 #46 方案 A）：「×3」从字里拿出来，放成字后面一个小数，点一下 +1；方框还是「做完」
     const counted = TodoCount.parse(words);
-    const shown = (counted.count ? counted.base : words).replace(ISSUE_URL_RE, '').replace(/[ \t]+$/gm, '');
+    // 第一行是「#标签 问题地址」（扩展的 GitHub 问题 #96）：两样拿走后第一行空了，前后的空行也去掉
+    const shown = (counted.count ? counted.base : words).replace(ISSUE_URL_RE, '').replace(/[ \t]+$/gm, '').replace(/^\n+|\n+$/g, '');
     MarkdownRenderer.render(this.app, shown, text, sourcePath, this).then(() => {
       if (counted.count) {
         const host = text.querySelector(':scope > p:last-child') || text;
