@@ -40,22 +40,28 @@ export function isMilestone(text, tag) {
 // days：[{ key: 'YYYY-MM-DD', todos }]。同一句话算同一个；reached 按到的那天从早到晚，ahead 按写下的那天从早到晚
 export function collectMilestones(days, tag) {
   const byText = new Map();
+  // pos：那一天清单里的位置。新加的在最上面，同一天里越往下的越早写下
+  let pos = 0;
   const walk = (key, list) => (list || []).forEach((todo) => {
     if (isMilestone(todo.text, tag)) {
       const text = milestoneText(todo.text);
       if (text) {
         const id = text.toLocaleLowerCase();
         let item = byText.get(id);
-        if (!item) { item = { text, since: key, on: '' }; byText.set(id, item); }
+        if (!item) { item = { text, since: key, on: '', sincePos: pos }; byText.set(id, item); }
         if (todo.checked && !item.on) { item.on = key; item.text = text; }
+        pos += 1;
       }
     }
     walk(key, todo.children);
   });
-  [...days].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).forEach((day) => walk(day.key, day.todos));
+  [...days].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).forEach((day) => { pos = 0; walk(day.key, day.todos); });
   const all = [...byText.values()];
-  const reached = all.filter((item) => item.on).sort((a, b) => (a.on < b.on ? -1 : a.on > b.on ? 1 : 0));
-  const ahead = all.filter((item) => !item.on).sort((a, b) => (a.since < b.since ? -1 : a.since > b.since ? 1 : 0));
+  // 早的在前；同一天的先看哪天写下的，再看位置（越往下的越早写下）
+  const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+  const written = (a, b) => cmp(a.since, b.since) || b.sincePos - a.sincePos;
+  const reached = all.filter((item) => item.on).sort((a, b) => cmp(a.on, b.on) || written(a, b));
+  const ahead = all.filter((item) => !item.on).sort(written);
   return { reached, ahead };
 }
 
@@ -125,6 +131,8 @@ export class MilestonesModal extends Modal {
   async onOpen() {
     this.modalEl.addClass('yaoji-ms-modal');
     this.titleEl.setText(t('里程碑'));
+    // 最上面一条：在这里直接加一个——带上 #里程碑 写进今天的日记（和扩展一样）
+    this.drawAdd(this.contentEl.createEl('form', { cls: 'yaoji-ms-add' }));
     this.listEl = this.contentEl.createDiv({ cls: 'yaoji-ms-body' });
     this.footEl = this.contentEl.createDiv({ cls: 'yaoji-ms-foot' });
     this.seen = readSeen();
@@ -166,6 +174,32 @@ export class MilestonesModal extends Modal {
     const next = new Set(readSeen() || []);
     data.reached.forEach((item) => next.add(item.text.toLocaleLowerCase()));
     writeSeen(next);
+  }
+
+  drawAdd(form) {
+    const input = form.createEl('input', { type: 'text', attr: { maxlength: '200', placeholder: t('写一个想做到的事，回车'), 'aria-label': t('添加里程碑') } });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const value = input.value.trim();
+      if (!value) { input.focus(); return; }
+      const tag = milestoneTag(this.plugin.settings);
+      const line = isMilestone(value, tag) ? value : `${value} #${tag}`;
+      input.disabled = true;
+      try {
+        await this.plugin.addTodoOn(this.plugin.now(), line);
+      } catch (error) {
+        console.error('[今日待办] 加里程碑失败', error);
+        this.plugin.notify(t('写不进今天的日记：{error}', { error: error?.message || error }), [], 8000);
+        input.disabled = false;
+        input.focus();
+        return;
+      }
+      input.disabled = false;
+      input.value = '';
+      await this.drawList();
+      input.focus();
+    });
+    window.setTimeout(() => input.focus(), 0);
   }
 
   async openDay(key) {

@@ -957,3 +957,14 @@
 .yaoji-today:focus {
   outline: none;
 }
+
+/* 里程碑窗最上面一条：在这里直接加一个 */
+.yaoji-ms-add {
+  margin: 0 0 8px;
+}
+
+.yaoji-ms-add input {
+  box-sizing: border-box;
+  width: 100%;
+  border-radius: 0;
+}

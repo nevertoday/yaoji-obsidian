@@ -41,3 +41,12 @@ test('wiring: a flag next to the day arrows and a command open it; ticking one s
   const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
   assert.match(css, /\.yaoji-ms-row\.is-ahead \.yaoji-ms-n \{\n  color: transparent;/);
 });
+
+test('add one right in the window: written into today with the tag (not twice); newest of the day on top', () => {
+  const src = readFileSync(new URL('../src/milestones.js', import.meta.url), 'utf8');
+  assert.match(src, /const line = isMilestone\(value, tag\) \? value : `\$\{value\} #\$\{tag\}`;/);
+  assert.match(src, /await this\.plugin\.addTodoOn\(this\.plugin\.now\(\), line\);/);
+  const days = [{ key: '2026-11-05', todos: [todo('上线新版 #里程碑'), todo('读完 12 本书 #里程碑')] }];
+  const rows = milestoneRows(collectMilestones(days, '里程碑'), { todayKey: '2026-11-05', seen: new Set() });
+  assert.deepEqual(rows.map((r) => [r.n, r.text]), [[2, '上线新版'], [1, '读完 12 本书']]);
+});
