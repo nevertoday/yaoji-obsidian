@@ -1,6 +1,6 @@
 // GitHub 上问题关了 → 日记里打勾（新标签页、侧边栏、后台共用；GitHub 问题 #8 方案 A）
 //
-// - diaryEntries：今天和最近 14 天的日记里，没打勾、带着问题地址的事 [{ filePath, dateKey, url, repo, number, text }]
+// - diaryEntries：今天和最近 14 天的日记里，没打勾、带着问题地址的事 [{ todoId, filePath, dateKey, url, repo, number, text }]（每个地址一条）
 // - setChecked：在那篇日记里把带着这个地址的那件事勾上 / 改回未完成（读出来、改一个勾、整段写回，和「带到今天」同一种写法）；
 //   真写进去了才返回 true
 // - replaceUrl / replaceUrls：问题搬走了，老地址换成新地址
@@ -35,8 +35,10 @@
       const byId = new Map();
       const walk = (items) => (items || []).forEach((todo) => { byId.set(todo.id, todo); walk(todo.children); });
       walk(todos);
+      // 一件事带着几个问题（「两个都要」）：每个地址一条，todoId 把它们认成同一件（全关了才勾，问题清单 G5）
       for (const entry of G().openIssueTodos(todos)) {
         entries.push({
+          todoId: entry.todoId,
           repo: entry.repo,
           number: entry.number,
           url: entry.url,

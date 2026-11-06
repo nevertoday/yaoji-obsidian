@@ -169,6 +169,29 @@ class MarkdownParser {
   }
 
   /**
+   * 第一行是不是整条一段 ==高亮==（星标），是就返回里面的字，不是返回 null。
+   * 「==a== 和 ==b==」是两段，不算（不然取消星标会吃掉中间的 ==）；给这种字加星标写成「====a== 和 ==b====」。
+   * 里面的 \= 是写的时候为了读得回来换的 =（见 wrapHighlight），读出来换回 =
+   */
+  static readHighlight(content) {
+    const match = String(content ?? '').match(/^==(==.*==|(?:\\.|(?!==).)+)==$/);
+    if (!match) return null;
+    const inner = match[1].trim();
+    return inner.includes('\\=') ? inner.replace(/\\=/g, '=') : inner;
+  }
+
+  /**
+   * 星标写成 ==字==。字里本来带 ==、以 = 结尾、开头就是 == 的（「1+1==2」「x=」），这样包读不回来，
+   * 星标会丢、字里多出 ==（问题清单 L5）：这时把字里的 = 都写成 \=（Obsidian 显示的还是 =，高亮也对），读的时候换回来
+   */
+  static wrapHighlight(line) {
+    const value = String(line ?? '');
+    const plain = `==${value}==`;
+    if (!value.includes('=') || (!value.includes('\\=') && MarkdownParser.readHighlight(plain) === value)) return plain;
+    return `==${value.replace(/=/g, '\\=')}==`;
+  }
+
+  /**
    * 从任务末尾剥离插件元数据标记
    * 支持多标记串联（例如：%%yaoji:inspiration%% %%yaoji:memory%% %%yaoji:todoid:xxx%%）
    * @param {string} rawText
@@ -279,11 +302,10 @@ class MarkdownParser {
 
       // 解析持久化标记（从显示文本中剥离，但保留状态）
       const { text: trimmedText, meta } = this.stripMetaMarkers(text);
-      // 整条是一段高亮才算星标；「==a== 和 ==b==」是两段，不算（不然取消星标会吃掉中间的 ==）。
-      // 给这种字加星标写成「====a== 和 ==b====」，读回来还是星标，取消后原样
-      const highlightMatch = trimmedText.match(/^==(==.*==|(?:(?!==).)+)==$/);
-      let normalizedText = highlightMatch ? highlightMatch[1].trim() : trimmedText;
-      let highlighted = !!highlightMatch;
+      // 星标 = 第一行整条是一段 ==高亮==（多行的事也看第一行，问题清单 L6），见 readHighlight
+      const starredText = MarkdownParser.readHighlight(trimmedText);
+      let normalizedText = starredText ?? trimmedText;
+      const highlighted = starredText !== null;
 
       // 多行任务：紧跟其后、缩进比任务行更深的非任务行是任务正文的续行（代码块里像任务的行也是续行）
       const continuationLines = [];
@@ -309,8 +331,6 @@ class MarkdownParser {
       let contIndent = null;
       if (continuationLines.length > 0) {
         normalizedText = [normalizedText, ...continuationLines].join('\n');
-        // Obsidian 中跨行的 == == 高亮表现不稳定，这里仅对单行任务启用
-        highlighted = false;
         const base = Math.min(...continuationWidths.filter((w) => w >= 0));
         const extra = continuationWidths.map((w) => (w >= 0 ? w - base : 0));
         if (extra.some((n) => n > 0)) contIndent = extra;
@@ -358,7 +378,8 @@ class MarkdownParser {
       const checkMark = todo.checked ? 'x' : ' ';
       const textLines = MarkdownParser.escapeUserMarkers(todo.text || '').split('\n');
       const firstLine = textLines[0] || '';
-      let firstContent = todo.highlighted && textLines.length === 1 ? `==${firstLine}==` : firstLine;
+      // 多行的事星标只包第一行（Obsidian 里跨行的 == 不稳定；读的时候也只看第一行）
+      let firstContent = todo.highlighted ? MarkdownParser.wrapHighlight(firstLine) : firstLine;
       const metaMarkers = this.buildMetaMarkers(todo);
       if (metaMarkers) {
         firstContent = `${firstContent} ${metaMarkers}`.trimEnd();

@@ -14,7 +14,8 @@ const S = '## 事项';
 test('merge: first in note order keeps its place, texts join line by line, others\' subtasks move under it', () => {
   const note = `${S}\n- [ ] a\n    - [ ] a1\n- [ ] ==b==\n    - [ ] b1\n- [ ] c\n- [x] d\n`;
   const merged = mergeTodos(note, [{ path: [3], text: 'd' }, { path: [0], text: 'a' }, { path: [1], text: 'b' }], S, parser);
-  assert.match(merged, /- \[ \] a\n {4}b\n {4}d\n {4}- \[ \] a1\n {4}- \[ \] b1\n- \[ \] c\n/);
+  // b 带星，合成的这件也带星：多行的事星标写在第一行（扩展 问题清单 L6，以前多行的星标写不出去）
+  assert.match(merged, /- \[ \] ==a==\n {4}b\n {4}d\n {4}- \[ \] a1\n {4}- \[ \] b1\n- \[ \] c\n/);
   assert.equal(mergeTodos(note, [{ path: [0], text: '别的字' }, { path: [1], text: 'b' }], S, parser), null);
   assert.equal(mergeTodos(note, [{ path: [0], text: 'a' }], S, parser), null);
 });

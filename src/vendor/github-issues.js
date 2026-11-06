@@ -127,8 +127,10 @@
   const tagKey = (value) => cleanTag(value).toLocaleLowerCase();
 
   // 文字里所有的标签：[{ tag, start, end }]，start 指着 #
-  // 网址、[[笔记#标题]] 链接里面的 # 不是标签（汉字后面也算标签以后，「…/中文#锚点」「[[笔记#节]]」会被误认，#77）
-  const NOT_TAG_SPANS_RE = /https?:\/\/[^\s<>"'）)\]]+|\[\[[^\]\n]*\]\]/g;
+  // 网址、[[笔记#标题]] 链接里面的 # 不是标签（汉字后面也算标签以后，「…/中文#锚点」「[[笔记#节]]」会被误认，#77）；
+  // [网页标题](网址) 的标题也不算：那是网页上别人写的字（右键「把这个网页加入今日待办」、收网页），里面的 #ai 不是你要发到哪（问题清单 G4）
+  // （标题最多看 500 个字：一长串没收尾的 [ 也是一遍扫完）
+  const NOT_TAG_SPANS_RE = /\[[^\]\n]{0,500}\]\([^)\s]{0,2000}\)|https?:\/\/[^\s<>"'）)\]]+|\[\[[^\]\n]*\]\]/g;
 
   // 扩展页面能不能直接取这个网站的东西（设置里允许了「所有网站」或这一个）；不能就别取——取了会被跨域拦下，控制台报错（#93）
   async function hostAccess(url) {
@@ -144,7 +146,7 @@
   function findTags(text) {
     const value = String(text || '');
     const out = [];
-    const spans = value.includes('://') || value.includes('[[')
+    const spans = value.includes('://') || value.includes('[[') || value.includes('](')
       ? [...value.matchAll(NOT_TAG_SPANS_RE)].map((m) => [m.index, m.index + m[0].length])
       : [];
     for (const match of value.matchAll(TAG_RE)) {
@@ -155,6 +157,30 @@
       out.push({ tag, start, end: start + 1 + tag.length });
     }
     return out;
+  }
+
+  // 从网页来的字（网页标题、选中的字、图里认出来的字）：像标签的 # 换成全角 ＃，看着一样，但不当标签——
+  // 只有你自己打的 # 才算「发到哪」，网页上正好写着 #ai 不会 5 秒后被发进你的 ai 项目（问题清单 G4）
+  function quietTags(text) {
+    const value = String(text ?? '');
+    if (!value.includes('#')) return value;
+    const starts = new Set(findTags(value).map((item) => item.start));
+    return starts.size ? value.replace(/#/g, (mark, at) => (starts.has(at) ? '＃' : mark)) : value;
+  }
+
+  // GitHub 上的问题标题带到今天（GitHub 清单「带到今天」）：标题是谁都能起的，当纯文字放进日记（问题清单 G13）——
+  // ![[附件]]、[[笔记]]、![](图片) 的括号换成全角（不会把你库里的文件显示在任务下面，也不会当附件发上 GitHub），
+  // %% 换成全角（不会被当成插件自己的记号），别的问题地址去掉（这件事只跟着它自己那个问题），像标签的 # 换成全角
+  function plainTitle(title) {
+    const words = String(title ?? '')
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(ISSUE_URL_RE, ' ')
+      .replace(/\[/g, '［')
+      .replace(/\]/g, '］')
+      .replace(/%%/g, '％％')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return quietTags(words);
   }
 
   // 项目名当标签（GitHub 问题 #16 方案 A）：连上的项目，名字（owner/ 后面那段）自动就是标签，不用先设置。
@@ -242,8 +268,8 @@
     return next;
   }
 
-  // 同一件事的编号：日期 + 去掉问题地址后的文字（几台电脑上算出来一样；会员站靠它只建一个问题）
-  function autoSendKey(dateKey, text) {
+  // 去掉问题地址后的文字算出来的一个短编号（几台电脑上算出来一样）
+  function textHash(text) {
     const words = String(text || '').replace(ISSUE_URL_RE, ' ').replace(/\s+/g, ' ').trim();
     let a = 0x811c9dc5;
     let b = 0x01000193;
@@ -252,11 +278,23 @@
       a = Math.imul(a ^ code, 0x01000193) >>> 0;
       b = Math.imul(b ^ code, 0x5bd1e995) >>> 0;
     }
-    const day = String(dateKey || '').replace(/[^0-9-]/g, '').slice(0, 10) || 'day';
-    return `tag:${day}:${a.toString(36)}${b.toString(36)}`;
+    return `${a.toString(36)}${b.toString(36)}`;
   }
 
-  // 列表里该自动发的事：没打勾、没发过、写了配了项目的标签、去掉标签后还有标题；[{ todo, repo, tag, key }]
+  // 发给会员站的编号：日期 + 文字（会员站靠它只建一个问题；带着日期，每周写一次的「周报 #blog」每次都是新的一个）
+  function autoSendKey(dateKey, text) {
+    const day = String(dateKey || '').replace(/[^0-9-]/g, '').slice(0, 10) || 'day';
+    return `tag:${day}:${textHash(text)}`;
+  }
+
+  // 本机记「这件事发不发」用的编号：只看文字、不带日期（问题清单 G3）——点过「先别发」、撤回过的事，
+  // 第二天被「全部带来」搬到今天，还是同一个编号，不会又倒数 5 秒发出去
+  function decisionKey(text) {
+    return `tag:${textHash(text)}`;
+  }
+
+  // 列表里该自动发的事：没打勾、没发过、写了配了项目的标签、去掉标签后还有标题；
+  // [{ todo, repo, tag, key, dedupeKey }]：key 是本机记决定用的（不带日期），dedupeKey 发给会员站（带日期）
   function autoSendCandidates(todos, routes, dateKey) {
     const out = [];
     if (!routes?.size) return out;
@@ -267,7 +305,7 @@
         if (!todo.checked && !findIssueUrls(text).length) {
           const route = routeOf(text, routes);
           if (route && buildDraft({ text }, { tags: { [route.repo]: [route.tag] } }).title) {
-            out.push({ todo, repo: route.repo, tag: route.tag, key: autoSendKey(dateKey, text) });
+            out.push({ todo, repo: route.repo, tag: route.tag, key: decisionKey(text), dedupeKey: autoSendKey(dateKey, text) });
           }
         }
         walk(todo.children);
@@ -279,7 +317,7 @@
 
   // 发过的事后来改了标签（GitHub 问题 #16）：标签指向的项目和问题所在的项目不一样 → 问一句「改发到 …？」
   // [{ todo, issue, repo, tag, key }]；key 带 move: 前缀，和自动发的分开记
-  function retagCandidates(todos, routes, dateKey) {
+  function retagCandidates(todos, routes) {
     const out = [];
     if (!routes?.size) return out;
     const walk = (items) => {
@@ -292,7 +330,7 @@
           const route = routeOf(text, routes);
           // 那个项目里已经有一个了（「两个都要」，GitHub 问题 #66）：不再问
           if (route && !issues.some((item) => item.repo.toLowerCase() === route.repo.toLowerCase())) {
-            out.push({ todo, issue, repo: route.repo, tag: route.tag, key: `move:${autoSendKey(dateKey, text)}` });
+            out.push({ todo, issue, repo: route.repo, tag: route.tag, key: `move:${decisionKey(text)}` });
           }
         }
         walk(todo.children);
@@ -304,15 +342,20 @@
 
   // ---------- 第 3 轮：问题关了自动打勾 ----------
 
-  // 列表里还没打勾、带着问题地址的事（每件只认第一个地址）：[{ todoId, repo, number, url }]
+  // 列表里还没打勾、带着问题地址的事：每个地址一条 [{ todoId, repo, number, url }]。
+  // 「两个都要」发到了两个项目的那件，两个地址都要问（问题清单 G5：以前只问第一个，第二块牌子永远像开着）
   function openIssueTodos(todos) {
     const out = [];
     const walk = (items) => {
       for (const todo of Array.isArray(items) ? items : []) {
         if (!todo) continue;
         if (!todo.checked) {
-          const issue = findIssueUrls(todo.text)[0];
-          if (issue) out.push({ todoId: todo.id, ...issue });
+          const seen = new Set();
+          for (const issue of findIssueUrls(todo.text)) {
+            if (seen.has(issue.url)) continue;
+            seen.add(issue.url);
+            out.push({ todoId: todo.id, ...issue });
+          }
         }
         walk(todo.children);
       }
@@ -335,12 +378,28 @@
     return state?.state === 'closed' && !NOT_DONE_REASONS.has(String(state.stateReason || ''));
   }
 
+  // 一件事带着几个问题（「两个都要」，问题清单 G5）：全都做完关掉了才打勾（GitHub 上删掉了的不算数）；
+  // 有一个还开着、没打算做、还没问到，就先不勾。回来的每件事一条：地址、编号是最后关掉的那个，
+  // acts 是这一次的每个关闭（记进 githubIssueActed，撤销以后不会又被勾上）
   function todosToTick(entries, states, acted = {}) {
     const byKey = new Map((Array.isArray(states) ? states : []).map((item) => [`${item.repo}#${item.number}`, item]));
-    return entries.filter((entry) => {
-      const state = byKey.get(`${entry.repo}#${entry.number}`);
-      return closedAsDone(state) && acted[entry.url] !== (state.closedAt || 'closed');
-    }).map((entry) => ({ ...entry, closedAt: byKey.get(`${entry.repo}#${entry.number}`).closedAt || 'closed' }));
+    const groups = new Map();
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const id = `${entry.filePath || ''}\u0000${entry.todoId ?? entry.url}`;
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(entry);
+    }
+    const out = [];
+    for (const list of groups.values()) {
+      const live = list.map((entry) => ({ entry, state: byKey.get(`${entry.repo}#${entry.number}`) }))
+        .filter(({ state }) => state?.state !== 'deleted');
+      if (!live.length || !live.every(({ state }) => closedAsDone(state))) continue;
+      const acts = live.map(({ entry, state }) => ({ url: entry.url, closedAt: state.closedAt || 'closed' }));
+      if (acts.every((act) => acted[act.url] === act.closedAt)) continue;
+      const last = live.reduce((a, b) => (String(b.state.closedAt || '') > String(a.state.closedAt || '') ? b : a));
+      out.push({ ...last.entry, closedAt: last.state.closedAt || 'closed', acts });
+    }
+    return out;
   }
 
   // 任务下面那块小牌子：项目名 #42，后面跟着 GitHub 上的状态（开着的不多说）
@@ -706,7 +765,8 @@
     }
 
     async send({ repo, title, body, footer: foot, images = [], docs = [], dedupeKey = '' }) {
-      // 图片多时会员站要一张张存进项目，等得久一点；按标签自动发的带上 dedupeKey，同一件事会员站只建一个
+      // 图片多时会员站要一张张存进项目，等得久一点；带上 dedupeKey，同一件事会员站只建一个
+      // （按标签自动发的是「日期 + 字」，手动发的是每一次一个，等不到回音再发时用同一个；问题清单 G15）
       const payload = { repo, title, body, footer: foot, images, docs, ...(dedupeKey ? { dedupeKey } : {}) };
       return this.requireClient().authorizedPost('/github/issue', payload, { timeoutMs: 180000 });
     }
@@ -737,6 +797,8 @@
       issue_closed: tr('这个问题已经关了，去 GitHub 上处理'),
       issue_has_replies: tr('下面有人留过言了，去 GitHub 上处理'),
       github_withdrawn: tr('这件事发过又撤回了，想发再右键'),
+      // 上一次（等不到回音的那次）会员站还在发：过一会儿再点，发好了会把地址接上（问题清单 G15）
+      github_send_in_progress: tr('上一次还在发，过一会儿再试'),
       not_found: tr('撤回还没开放，过两天再试')
     };
     if (map[code]) return map[code];
@@ -782,6 +844,8 @@
     cleanTag,
     tagKey,
     findTags,
+    quietTags,
+    plainTitle,
     tagRoutes,
     nameTag,
     retagCandidates,
@@ -789,6 +853,7 @@
     stripRouteTags,
     setRepoTags,
     autoSendKey,
+    decisionKey,
     autoSendCandidates,
     REPO_COLORS
   };
