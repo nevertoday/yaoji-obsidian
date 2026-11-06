@@ -343,10 +343,10 @@ export class TodayView extends ItemView {
     row.addEventListener('pointerdown', (event) => {
       if (event.button === 0 && !(event.metaKey || event.ctrlKey || event.shiftKey)) this.lastClicked = key;
     });
-    // 按住 ⌘ / Ctrl / Shift 点：选上（不进编辑、不勾方框、不开链接）
+    // 按住 ⌘ / Ctrl / Shift 点：选上（不进编辑、不勾方框）。点在链接上的照老规矩开链接（⌘ 点 = 新标签页，和扩展的问题清单 L13 一样）
     row.addEventListener('click', (event) => {
       if (!(event.metaKey || event.ctrlKey || event.shiftKey)) return;
-      if (event.target.closest('.yaoji-edit, .yaoji-grip')) return;
+      if (event.target.closest('.yaoji-edit, .yaoji-grip, a')) return;
       event.preventDefault();
       event.stopPropagation();
       this.pickGesture(key, event.shiftKey);
@@ -428,12 +428,21 @@ export class TodayView extends ItemView {
     if (issue) {
       const color = `var(--yaoji-repo-${G.repoColor(issue.repo, this.plugin.settings.github?.colors || {})})`;
       row.style.setProperty('--yaoji-issue', color);
-      const badge = body.createDiv({ cls: 'yaoji-issue' });
-      badge.createSpan({ cls: 'yaoji-issue-name', text: issue.repo.split('/').pop() });
-      const link = badge.createEl('a', { cls: 'yaoji-issue-num', text: `#${issue.number}`, href: issue.url });
-      link.addEventListener('click', (event) => { event.preventDefault(); window.open(issue.url); });
+    }
+    // 「两个都要」（在扩展里发到两个项目）：每个问题一块牌子，并排（和扩展的问题清单 G5 一样）
+    const seenIssues = new Set();
+    const badges = issues.length ? body.createDiv({ cls: 'yaoji-issues' }) : null;
+    for (const item of issues) {
+      if (seenIssues.has(item.url)) continue;
+      seenIssues.add(item.url);
+      const badge = badges.createDiv({ cls: 'yaoji-issue' });
+      badge.dataset.url = item.url;
+      if (item !== issue) badge.style.setProperty('--yaoji-issue', `var(--yaoji-repo-${G.repoColor(item.repo, this.plugin.settings.github?.colors || {})})`);
+      badge.createSpan({ cls: 'yaoji-issue-name', text: item.repo.split('/').pop() });
+      const link = badge.createEl('a', { cls: 'yaoji-issue-num', text: `#${item.number}`, href: item.url });
+      link.addEventListener('click', (event) => { event.preventDefault(); window.open(item.url); });
       // GitHub 上关了：后面跟一句「✓ 已完成 / 不做了 / 重复了」，删掉了的写「已删除」（和扩展一样；开着的不多说）
-      const state = this.plugin.github?.badgeOf?.(issue);
+      const state = this.plugin.github?.badgeOf?.(item);
       if (state?.label) {
         badge.addClass(`is-${state.status.replace('_', '-')}`);
         badge.createSpan({ cls: 'yaoji-issue-state', text: `${state.status === 'done' ? '✓ ' : ''}${state.label}` });
@@ -515,11 +524,14 @@ export class TodayView extends ItemView {
     // 发到 GitHub（会员）：发过的收成一行「项目 #44 ›」（和扩展的 GitHub 问题 #91 方案 A 一样，照「访达」的「共享 ›」），
     // 指上去是 打开 · 复制链接 · 改发到 · 撤回；登录了、连着 GitHub 才有「发到 GitHub」。GitHub 上删掉了的，可以重新发
     const github = this.plugin.github;
-    const issue = github?.issueOf(todo.text);
     const file = this.plugin.fileAt(sourcePath);
-    const deleted = issue && github?.badgeOf?.(issue)?.status === 'deleted';
-    if (issue || (github?.ready() && file)) menu.addSeparator();
-    if (issue && !deleted) {
+    // 每个问题一行（「两个都要」时两行，和扩展的问题清单 G5 一样）；GitHub 上删掉了的不列
+    const seen = new Set();
+    const live = G.findIssueUrls(String(todo.text || ''))
+      .filter((item) => !seen.has(item.url) && seen.add(item.url))
+      .filter((item) => github?.badgeOf?.(item)?.status !== 'deleted');
+    if (live.length || (github?.ready() && file)) menu.addSeparator();
+    for (const issue of live) {
       const fill = (sub) => {
         sub.addItem((item) => item.setTitle(t('在 GitHub 打开')).setIcon('external-link').onClick(() => window.open(issue.url)));
         sub.addItem((item) => item.setTitle(t('复制链接')).setIcon('link').onClick(() => this.copyLink(issue.url)));
@@ -538,7 +550,8 @@ export class TodayView extends ItemView {
         if (!sub) item.onClick(() => window.open(issue.url));
       });
       if (sub) fill(sub); else fill(menu);
-    } else if (github?.ready() && file) {
+    }
+    if (!live.length && github?.ready() && file) {
       menu.addItem((item) => item
         .setTitle(t('发到 GitHub'))
         .setIcon('send')
@@ -967,11 +980,11 @@ export class TodayView extends ItemView {
 
   // 撤回之前问一句（和扩展的 GitHub 问题 #67 一样）：牌子底下「GitHub 上的 #44 会删掉　撤回 · 不了」，光标停在「撤回」上
   askWithdraw(row, todo, path, sourcePath, issue) {
-    const badge = row.querySelector('.yaoji-issue');
+    const badge = [...row.querySelectorAll('.yaoji-issue')].find((node) => node.dataset.url === issue.url) || row.querySelector('.yaoji-issue');
     if (!badge || row.querySelector('.yaoji-issue-ask')) return;
     const ask = document.createElement('div');
     ask.className = 'yaoji-issue-ask';
-    badge.after(ask);
+    (badge.closest('.yaoji-issues') || badge).after(ask);
     ask.createSpan({ text: t('GitHub 上的 #{number} 会删掉', { number: issue.number }) });
     const yes = ask.createEl('button', { cls: 'yaoji-issue-act', text: t('撤回') });
     const no = ask.createEl('button', { cls: 'yaoji-issue-act', text: t('不了') });

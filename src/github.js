@@ -30,6 +30,11 @@ function keepLatest(map, limit) {
   return Object.fromEntries(entries.slice(Math.max(0, entries.length - limit)));
 }
 
+// 手动发的防重复编号（和扩展的问题清单 G15 一样）：同一件事发到同一个项目，30 分钟内没等到回音再点一次，
+// 带的还是同一个编号，会员站认出来只建一个；发成了、或者明确失败了就换新的
+const MANUAL_KEY_MS = 30 * 60 * 1000;
+const WAITED = ['network', 'request_timeout', 'network_error'];
+
 export class Github {
   constructor(plugin) {
     this.plugin = plugin;
@@ -42,6 +47,7 @@ export class Github {
     this.connecting = null;
     this.firstTick = 0;
     this.stopped = false;
+    this.manualKeys = new Map();
     // 插件关掉时：等着连 GitHub 的那一轮、开头那一下打勾都停掉
     plugin.register?.(() => this.stop());
   }
@@ -177,22 +183,37 @@ export class Github {
     return new Promise((resolve) => window.setTimeout(() => new RepoModal(this.plugin.app, ordered, resolve).open(), 120));
   }
 
+  manualKey(text, repo) {
+    const slot = `${G.decisionKey ? G.decisionKey(text) : String(text)}|${repo}`;
+    const kept = this.manualKeys.get(slot);
+    if (kept && Date.now() - kept.at < MANUAL_KEY_MS) return { slot, key: kept.key };
+    const key = `send:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    this.manualKeys.set(slot, { key, at: Date.now() });
+    return { slot, key };
+  }
+
   // 一件事发成一个问题：标题是第一行，其余几行和子任务是正文；发完问题地址接在这件事后面
-  async send({ file, todo, path }) {
-    const repo = await this.pickRepo();
+  async send({ file, todo, path, repo: chosen = '' }) {
+    const repo = chosen || await this.pickRepo();
     if (!repo) return;
     const draft = G.buildDraft(todo, {});
     if (!draft.title) return;
     // 「正在发到」一直挂到有结果，有了结果就换成结果那一句（同一件事只说一遍）
     const sending = this.plugin.notify(t('正在发到 {repo}…', { repo: repo.split('/').pop() }), [], 0);
     let result;
+    const manual = this.manualKey(todo.text, repo);
     try {
-      result = await this.api.send({ repo, title: draft.title, body: draft.body, footer: t('来自今日待办 · {date}', { date: moment().format('MM/DD') }) });
+      result = await this.api.send({ repo, title: draft.title, body: draft.body, footer: t('来自今日待办 · {date}', { date: moment().format('MM/DD') }), dedupeKey: manual.key });
     } catch (error) {
       sending?.hide();
-      this.plugin.notify(this.errorText(error), [], 8000);
+      const waited = WAITED.includes(String(error?.code || ''));
+      if (!waited) this.manualKeys.delete(manual.slot);
+      this.plugin.notify(waited ? t('没等到 GitHub 的回音，再试一次也只会发出一个') : this.errorText(error), waited ? [{
+        label: t('再试一次'), run: () => this.send({ file, todo, path, repo })
+      }] : [], 8000);
       return;
     }
+    this.manualKeys.delete(manual.slot);
     sending?.hide();
     const issue = G.parseIssueUrl(result?.url);
     if (!issue) {
@@ -295,8 +316,11 @@ export class Github {
       const next = { ...acted };
       for (const entry of tick) {
         if (retry.has(entry.url)) continue;
-        delete next[entry.url];
-        next[entry.url] = entry.closedAt;
+        // 一件事带着几个问题（「两个都要」）：全关了才勾，这一次的每个关闭都记下（问题清单 G5）
+        for (const act of entry.acts || [entry]) {
+          delete next[act.url];
+          next[act.url] = act.closedAt;
+        }
       }
       this.settings.acted = keepLatest(next, ACTED_LIMIT);
       await this.plugin.saveSettings();

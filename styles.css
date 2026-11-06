@@ -443,6 +443,15 @@
 }
 
 /* GitHub 问题：项目色的浅底小签「■ xposter #40」（和扩展的 GitHub 问题 #84 一样），整行不再着色 */
+/* 一件事的几个问题牌子并排（「两个都要」），放不下就换行 */
+.yaoji-issues {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 8px;
+  max-width: 100%;
+}
+
 .yaoji-issue {
   display: inline-flex;
   align-items: center;
