@@ -807,7 +807,7 @@ export class TodayView extends ItemView {
     const menu = new Menu();
     menu.addItem((item) => item.setTitle(t('改成同一句…')).setIcon('pencil').onClick(() => window.setTimeout(() => this.startRename(), 0)));
     menu.addItem((item) => item.setTitle(allStar ? t('取消星标') : t('星标')).setIcon('star').onClick(() => this.batch('star')));
-    menu.addItem((item) => { item.setTitle(t('合并成一条')).setIcon('combine').onClick(() => this.batch('merge')); if (items.length < 2) item.setDisabled?.(true); });
+    if (items.length >= 2) menu.addItem((item) => item.setTitle(t('合并成一条')).setIcon('combine').onClick(() => this.batch('merge')));
     return menu;
   }
 
@@ -825,7 +825,7 @@ export class TodayView extends ItemView {
       menu.addItem((item) => item.setTitle(`${day.name} · ${day.hint}`).setIcon('arrow-right').onClick(() => this.batch('move', { date: day.date, label: day.name })));
     }
     menu.addItem((item) => item.setTitle(t('改成同一句…')).setIcon('pencil').onClick(() => window.setTimeout(() => this.startRename(), 0)));
-    menu.addItem((item) => { item.setTitle(t('合并成一条')).setIcon('combine').onClick(() => this.batch('merge')); if (items.length < 2) item.setDisabled?.(true); });
+    if (items.length >= 2) menu.addItem((item) => item.setTitle(t('合并成一条')).setIcon('combine').onClick(() => this.batch('merge')));
     menu.addSeparator();
     menu.addItem((item) => { item.setTitle(t('删除')).setIcon('trash-2').onClick(() => this.batch('delete')); item.setWarning?.(true); });
     return menu;
