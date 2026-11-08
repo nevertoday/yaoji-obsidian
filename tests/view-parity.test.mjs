@@ -15,7 +15,8 @@ test('header is one line: date, lucky mark and done count; no separate meta row'
 });
 
 test('done to-dos are listed last (display only; paths still point into the note)', () => {
-  assert.match(view, /const shown = \[\.\.\.order\.filter\(\(item\) => !item\.todo\.checked\), \.\.\.order\.filter\(\(item\) => item\.todo\.checked\)\];\n {4}shown\.forEach\(\(\{ todo, index \}\) => draw\(\[todo\], \[\], 0, index\)\);/);
+  // 刚勾掉、撤销还在的那件先留在原处（2026-11-07 勾选 B）
+  assert.match(view, /const shown = \[\.\.\.order\.filter\(open\), \.\.\.order\.filter\(\(item\) => !open\(item\)\)\];\n {4}shown\.forEach\(\(\{ todo, index \}\) => draw\(\[todo\], \[\], 0, index\)\);/);
   assert.match(view, /const index = startIndex \+ offset;\n {8}const path = \[\.\.\.parentPath, index\];/);
 });
 

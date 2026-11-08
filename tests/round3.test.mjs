@@ -20,7 +20,7 @@ test('merge: first in note order keeps its place, texts join line by line, other
   assert.equal(mergeTodos(note, [{ path: [0], text: 'a' }], S, parser), null);
 });
 
-test('ticking one: no notice, 撤销 on that row with a draining line; ⌘Z runs the same undo; redraws keep it', () => {
+test('ticking one: no notice, 撤销 on that row; ⌘Z runs the same undo; redraws keep it', () => {
   assert.match(view, /box\.addEventListener\('click', \(event\) => \{\n {6}event\.preventDefault\(\);\n {6}this\.toggleDone\(todo, path, sourcePath\);/);
   assert.match(view, /const ROW_UNDO_MS = 4000;/);
   assert.match(view, /if \(this\.rowUndo\?\.key === key && this\.rowUndo\.text === todo\.text\) this\.paintRowUndo\(row\);/);
@@ -28,7 +28,6 @@ test('ticking one: no notice, 撤销 on that row with a draining line; ⌘Z runs
   assert.match(view, /root\.setAttribute\('tabindex', '-1'\);/);
   // 删除、批量、做了一次的「撤销」和 ⌘Z 是同一份
   assert.equal((view.match(/run: \(\) => entry\.fire\(\)/g) || []).length, 3);
-  assert.match(css, /\.yaoji-row-timer \{\n  position: absolute;/);
 });
 
 test('pick bar: 完成 · 标签 · 复制 · 移到… · 删除 · ⋯ · ×; ⋯ has 改成同一句 / 星标 / 合并; rename is a bar, not a menu', () => {

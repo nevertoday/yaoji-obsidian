@@ -54,8 +54,12 @@ export function renameTo(text, words) {
   return [String(words || '').trim(), ...kept].filter(Boolean).join(' ');
 }
 
-// 勾掉一件后那一行「撤销」留多久（和扩展的 GitHub 问题 #99 方案 C 一样）；⌘Z 能撤多久以前的
+// 勾掉一件后那一行「撤销」留多久（和扩展 2026-11-07 勾选方案 B 一样，照「邮件」的撤销发送）：
+// 外面一层的事留在原处 10 秒（扩展「勾选后多久移到下面」的默认值），到点这一行连撤销一起淡出 0.2 秒再挪到最后；
+// 子任务本来就不挪，撤销照旧 4 秒。⌘Z 能撤多久以前的
 const ROW_UNDO_MS = 4000;
+const DONE_STAY_MS = 10000;
+const DONE_LEAVE_MS = 200;
 const UNDO_WINDOW_MS = 60 * 1000;
 
 export const VIEW_TYPE = 'yaoji-today-view';
@@ -172,8 +176,8 @@ export class TodayView extends ItemView {
     return entry;
   }
 
-  // ---------- 勾掉一件（和扩展的 GitHub 问题 #99 方案 C 一样，照「提醒事项」）----------
-  // 不出提示：就在那一行右边「撤销」，底下一道细线走完（4 秒）就收起；⌘Z 也行。写了 #里程碑 的另外说刻上了第几个
+  // ---------- 勾掉一件（和扩展 2026-11-07 勾选方案 B 一样）----------
+  // 不出提示：就在那一行右边一个不动的灰字「撤销」，不画倒计时；⌘Z 也行。写了 #里程碑 的另外说刻上了第几个
   toggleDone(todo, path, sourcePath) {
     const reaching = !todo.checked;
     const key = path.join('.');
@@ -185,12 +189,40 @@ export class TodayView extends ItemView {
         return this.change({ ...todo, checked: true }, path, (item) => { item.checked = false; }, sourcePath);
       });
       window.clearTimeout(this.rowUndoTimer);
-      this.rowUndo = { key, text: todo.text, until: Date.now() + ROW_UNDO_MS, entry };
-      this.rowUndoTimer = window.setTimeout(() => this.clearRowUndo(), ROW_UNDO_MS);
+      const stays = path.length === 1;
+      const ms = stays ? DONE_STAY_MS : ROW_UNDO_MS;
+      this.rowUndo = { key, text: todo.text, until: Date.now() + ms, entry, stays };
+      this.rowUndoTimer = window.setTimeout(() => this.endRowUndo(), ms);
       this.paintRowUndo();
       const message = await reachedMessage(this.plugin, todo);
       if (message) this.plugin.notify(message, [], 4000);
     });
+  }
+
+  // 到点：留在原处的那一行连撤销一起淡出 0.2 秒，再重画（挪到最后）；子任务只是撤销淡掉
+  endRowUndo() {
+    const state = this.rowUndo;
+    if (!state) return;
+    const row = this.rowUndoRow(state);
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (!row || calm) { this.clearRowUndo(); if (state.stays) this.redraw(); return; }
+    if (!state.stays) {
+      row.querySelector(':scope > .yaoji-row-undo')?.addClass('is-leaving');
+      this.rowUndoTimer = window.setTimeout(() => this.clearRowUndo(), DONE_LEAVE_MS);
+      return;
+    }
+    row.addClass('is-leaving');
+    this.rowUndoTimer = window.setTimeout(() => { this.clearRowUndo(); this.redraw(); }, DONE_LEAVE_MS);
+  }
+
+  rowUndoRow(state) {
+    return this.rows?.find((entry) => entry.key === state.key && entry.todo.text === state.text)?.el || null;
+  }
+
+  // 刚勾掉、还在原处的那件（重画时不挪到最后）
+  isStaying(index, todo) {
+    const state = this.rowUndo;
+    return Boolean(state?.stays && !state.entry.used && state.key === String(index) && state.text === todo.text);
   }
 
   clearRowUndo() {
@@ -199,17 +231,16 @@ export class TodayView extends ItemView {
     this.rowUndo = null;
     if (!state) return;
     const row = this.rows?.find((entry) => entry.key === state.key)?.el;
-    row?.querySelectorAll(':scope > .yaoji-row-undo, :scope > .yaoji-row-timer').forEach((el) => el.remove());
+    row?.querySelectorAll(':scope > .yaoji-row-undo').forEach((el) => el.remove());
     row?.removeClass('has-row-undo');
   }
 
-  // row：正在画的这一行（重画时接着画上，细线从剩下的那截接着走）
+  // row：正在画的这一行（重画时接着画上）
   paintRowUndo(row = null) {
     const state = this.rowUndo;
     if (!state) return;
-    const left = state.until - Date.now();
-    if (left <= 0 || state.entry.used) { this.clearRowUndo(); return; }
-    const target = row || this.rows?.find((entry) => entry.key === state.key && entry.todo.text === state.text)?.el;
+    if (state.until <= Date.now() || state.entry.used) { this.clearRowUndo(); return; }
+    const target = row || this.rowUndoRow(state);
     if (!target || target.querySelector(':scope > .yaoji-row-undo')) return;
     const button = document.createElement('button');
     button.type = 'button';
@@ -221,14 +252,8 @@ export class TodayView extends ItemView {
       state.entry.fire();
     });
     button.addEventListener('dblclick', (event) => event.stopPropagation());
-    const timer = document.createElement('i');
-    timer.className = 'yaoji-row-timer';
-    timer.setAttribute('aria-hidden', 'true');
-    timer.style.animationDuration = `${ROW_UNDO_MS}ms`;
-    timer.style.animationDelay = `-${ROW_UNDO_MS - left}ms`;
     target.addClass('has-row-undo');
     target.insertBefore(button, target.querySelector(':scope > .yaoji-more'));
-    target.appendChild(timer);
   }
 
   queueRedraw() {
@@ -272,9 +297,11 @@ export class TodayView extends ItemView {
         draw(children, path, depth + 1);
       });
     };
-    // 做完的放到最后（和扩展一样，只是显示的顺序；日记里的顺序不动，改哪件还是按它在日记里的位置）
+    // 做完的放到最后（和扩展一样，只是显示的顺序；日记里的顺序不动，改哪件还是按它在日记里的位置）；
+    // 刚勾掉、撤销还在的那件先留在原处
     const order = todos.map((todo, index) => ({ todo, index }));
-    const shown = [...order.filter((item) => !item.todo.checked), ...order.filter((item) => item.todo.checked)];
+    const open = (item) => !item.todo.checked || this.isStaying(item.index, item.todo);
+    const shown = [...order.filter(open), ...order.filter((item) => !open(item))];
     shown.forEach(({ todo, index }) => draw([todo], [], 0, index));
     this.listEl.toggleClass('is-empty', !todos.length);
     if (!todos.length) this.listEl.createDiv({ cls: 'yaoji-empty', text: t('今天还没有待办') });

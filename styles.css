@@ -867,51 +867,48 @@
   white-space: nowrap;
 }
 
-/* ===== 勾掉一件就在那一行「撤销」（和扩展的 GitHub 问题 #99 方案 C 一样，照「提醒事项」）=====
-   右边一个「撤销」，底下一道细线走完（4 秒）就收起 */
+/* ===== 勾掉一件就在那一行「撤销」（和扩展 2026-11-07 勾选方案 B 一样，照「邮件」的撤销发送）=====
+   右边一个不动的灰字「撤销」，不画倒计时；指上去变黑加下划线。撤销在时「⋯」让出来，撤销落在最右边。
+   到点这一行连撤销一起淡出 0.2 秒再挪到最后 */
 .yaoji-today button.yaoji-row-undo {
   flex: none;
   align-self: center;
   height: auto;
   margin-inline-start: auto;
-  padding: 2px 8px;
+  padding: 0 0 0 8px;
   border: 0;
   border-radius: 0;
   background: none;
   box-shadow: none;
-  color: var(--yaoji-ink);
+  color: var(--yaoji-muted);
   font: inherit;
   font-size: 13px;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  font-weight: 400;
+  line-height: 24px;
   white-space: nowrap;
   cursor: pointer;
-  animation: yaoji-row-undo-in 0.2s ease-out;
+}
+
+.yaoji-today button.yaoji-row-undo:hover,
+.yaoji-today button.yaoji-row-undo:focus-visible {
+  background: none;
+  color: var(--yaoji-ink);
 }
 
 .yaoji-today button.yaoji-row-undo:hover {
-  background: var(--background-modifier-hover);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
-.yaoji-row-timer {
-  position: absolute;
-  inset-inline: 0;
-  bottom: -1px;
-  height: 1px;
-  background: color-mix(in srgb, var(--yaoji-ink) 55%, transparent);
-  transform-origin: left center;
-  animation: yaoji-row-undo-timer linear forwards;
-  pointer-events: none;
+.yaoji-item.has-row-undo .yaoji-more {
+  display: none;
 }
 
-@keyframes yaoji-row-undo-in {
-  from { opacity: 0; }
-}
-
-@keyframes yaoji-row-undo-timer {
-  from { transform: scaleX(1); }
-  to { transform: scaleX(0); }
+.yaoji-item.is-leaving,
+.yaoji-today button.yaoji-row-undo.is-leaving {
+  opacity: 0;
+  transition: opacity 200ms ease;
 }
 
 /* GitHub 牌子后面那一句：关了的「✓ 已完成 / 不做了 / 重复了」，删掉了的「已删除」 */
@@ -952,13 +949,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .yaoji-today button.yaoji-row-undo,
-  .yaoji-row-timer {
-    animation: none;
-  }
-
-  .yaoji-row-timer {
-    display: none;
+  .yaoji-item.is-leaving,
+  .yaoji-today button.yaoji-row-undo.is-leaving {
+    transition: none;
   }
 }
 
