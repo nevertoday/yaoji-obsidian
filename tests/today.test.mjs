@@ -238,3 +238,27 @@ test('剩下的数：最近 3 天、7 天、全部；菜单几行去掉一样的
   assert.equal(rows({ 3: 0, 7: 5, all: 5 }), 'all:5');
   assert.equal(MENU_CONFIRM_OVER, 50);
 });
+
+// 2026-11-18 用户反馈：有图的事项，字和方框对不齐（图在字里把第一行撑高了）。图和文档拿出来，字下面排一排
+test('attachments leave the words: images and docs become their own row, the first line keeps only words', async () => {
+  const { splitAttachments } = await import('../src/today.js');
+  const one = splitAttachments('买菜 ![[附件/2026-11-18-101010-123-ab12-菜单.png]] 早点去');
+  assert.equal(one.words, '买菜 早点去');
+  assert.deepEqual(one.items.map(({ link, image, name, web }) => ({ link, image, name, web })), [
+    { link: '附件/2026-11-18-101010-123-ab12-菜单.png', image: true, name: '菜单.png', web: false },
+  ]);
+
+  const only = splitAttachments('![[a.png|200]]');
+  assert.equal(only.words, '');
+  assert.equal(only.items[0].link, 'a.png');
+
+  const lines = splitAttachments('整理照片\n![[a.jpg]] ![](https://x.com/p.webp?w=1)\n![[纪要.md]]\n\n再看一遍');
+  assert.equal(lines.words, '整理照片\n\n再看一遍');
+  assert.deepEqual(lines.items.map((item) => [item.name, item.image, item.web]), [
+    ['a.jpg', true, false], ['p.webp', true, true], ['纪要.md', false, false],
+  ]);
+
+  assert.equal(splitAttachments('![](%E5%9B%BE/b%20c.png)').items[0].link, '图/b c.png');
+  assert.deepEqual(splitAttachments('没有图 #标签').items, []);
+  assert.equal(splitAttachments('没有图 #标签').words, '没有图 #标签');
+});

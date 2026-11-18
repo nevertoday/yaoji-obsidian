@@ -572,6 +572,32 @@ function notesBack(content, path, groups, section, parser) {
   return content;
 }
 
+// 一件事里的图片和文档（![[…]]、![](…)）：从字里拿出来，在字下面排成一排小图（和扩展一样）。
+// 留在字里时，48px 高的图把第一行撑高，字就和方框错开了（2026-11-18 用户反馈）
+const ATTACHMENT_RE = /!\[\[([^\]\n]+)\]\]|!\[[^\]\n]*\]\(([^)\n]+)\)/g;
+const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|svg|bmp|avif|heic|heif|ico)$/i;
+export function splitAttachments(text) {
+  const items = [];
+  const take = (line) => line.replace(ATTACHMENT_RE, (markup, wiki, url) => {
+    const web = !wiki && /^https?:\/\//i.test(url.trim());
+    let link = wiki ? wiki.split('|')[0].split('#')[0].trim() : url.trim().replace(/^<|>$/g, '');
+    if (!wiki && !web) { try { link = decodeURI(link); } catch { /* 留原样 */ } }
+    const base = (web ? link.split(/[?#]/)[0] : link).split('/').pop() || link;
+    // 扩展存附件时文件名前面带「日期-时间-随机」，显示时去掉（和扩展的 attachmentDisplayName 一样）
+    const name = base.replace(/^\d{4}-\d{2}-\d{2}-\d{6}-\d{3}-[a-z0-9]{1,12}-/i, '');
+    if (link) items.push({ markup, link, web, image: web || IMAGE_FILE_RE.test(link), name });
+    return '';
+  });
+  // 只放图的那一行整行拿掉；别的行只收掉图留下的空格
+  const lines = String(text || '').split('\n').flatMap((line) => {
+    const rest = take(line);
+    if (rest === line) return [line];
+    const clean = rest.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/, '');
+    return clean.trim() ? [clean] : [];
+  });
+  return { words: lines.join('\n').replace(/^\n+|\n+$/g, ''), items };
+}
+
 // 一天的事项（树）。没有这一节返回空
 export function readTodos(content, section, parser) {
   const found = parser.extractSection(String(content || ''), section);

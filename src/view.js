@@ -6,7 +6,7 @@
 // 全按日记文件画：点方框、星标、改字、删除都是改文件，文件一变（这里改的、在笔记里改的、手机同步来的）就重画。
 import * as obsidian from 'obsidian';
 import { language, t } from './i18n.js';
-import { addDays, dateKey, editTodo, editTodos, insertTodo, mergeIntoToday, mergeTodos, moveTodo, readTodos, restoreTodo, takeTodo, takeTodos, undoBrought } from './today.js';
+import { addDays, dateKey, editTodo, editTodos, insertTodo, mergeIntoToday, mergeTodos, moveTodo, readTodos, restoreTodo, splitAttachments, takeTodo, takeTodos, undoBrought } from './today.js';
 import { ISSUE_URL_RE } from './github.js';
 import { MilestonesModal, reachedMessage } from './milestones.js';
 import G from './vendor/github-issues.js';
@@ -411,9 +411,11 @@ export class TodayView extends ItemView {
     const issues = G.findIssueUrls(raw);
     const issue = issues[0] || null;
     // 做了几次（扩展的 GitHub 问题 #46 方案 A）：「×3」从字里拿出来，放成字后面一个小数，点一下 +1；方框还是「做完」
-    const counted = TodoCount.parse(words);
+    // 图片和文档不放在字里（会把第一行撑高、和方框错开），字下面排一排小图
+    const attached = splitAttachments(words);
+    const counted = TodoCount.parse(attached.words);
     // 第一行是「#标签 问题地址」（扩展的 GitHub 问题 #96）：两样拿走后第一行空了，前后的空行也去掉
-    const shown = (counted.count ? counted.base : words).replace(ISSUE_URL_RE, '').replace(/[ \t]+$/gm, '').replace(/^\n+|\n+$/g, '');
+    const shown = (counted.count ? counted.base : attached.words).replace(ISSUE_URL_RE, '').replace(/[ \t]+$/gm, '').replace(/^\n+|\n+$/g, '');
     MarkdownRenderer.render(this.app, shown, text, sourcePath, this).then(() => {
       if (counted.count) {
         const host = text.querySelector(':scope > p:last-child') || text;
@@ -438,6 +440,11 @@ export class TodayView extends ItemView {
         }
       });
     });
+
+    if (attached.items.length) {
+      row.toggleClass('is-files-only', !shown.trim());
+      this.drawFiles(body.createDiv({ cls: 'yaoji-files' }), attached.items, sourcePath);
+    }
 
     // 标签那一排：和下面牌子同一个项目的标签不再单独一块（说两遍）
     const repoName = issue ? issue.repo.split('/').pop().toLowerCase() : '';
@@ -503,6 +510,30 @@ export class TodayView extends ItemView {
     });
     if (this.rowUndo?.key === key && this.rowUndo.text === todo.text) this.paintRowUndo(row);
     return row;
+  }
+
+  // 字下面那排图：库里的图按日记的位置找（和 ![[…]] 一样），点一下在新标签页打开；找不到的图和文档是一个带名字的小签
+  drawFiles(strip, items, sourcePath) {
+    for (const item of items) {
+      const file = item.web ? null : this.app.metadataCache.getFirstLinkpathDest(item.link, sourcePath);
+      const src = item.web ? item.link : (item.image && file ? this.app.vault.getResourcePath(file) : '');
+      const open = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (item.web) window.open(item.link);
+        else this.app.workspace.openLinkText(item.link, sourcePath, true);
+      };
+      if (src) {
+        const thumb = strip.createEl('button', { cls: 'yaoji-thumb', attr: { 'aria-label': item.name, title: item.name } });
+        thumb.createEl('img', { attr: { src, alt: item.name, loading: 'lazy', draggable: 'false' } });
+        thumb.addEventListener('click', open);
+        continue;
+      }
+      const chip = strip.createEl('button', { cls: 'yaoji-file', attr: { title: item.link } });
+      setIcon(chip.createSpan({ cls: 'yaoji-file-icon' }), item.image ? 'image' : 'file-text');
+      chip.createSpan({ text: item.name });
+      chip.addEventListener('click', open);
+    }
   }
 
   // 一件事的菜单（右键和「⋯」同一份，顺序和扩展一样）：完成 · 编辑 · 星标 · 做了一次 · 复制文字 | GitHub | 删除

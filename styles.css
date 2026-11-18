@@ -317,8 +317,84 @@
 .yaoji-text > :last-child { margin-bottom: 0; }
 .yaoji-text p { margin: 0; }
 .yaoji-text a { color: inherit; text-decoration-color: var(--yaoji-line-strong); }
-.yaoji-text img { max-height: 48px; width: auto; vertical-align: middle; }
 .yaoji-text mark { background: none; color: inherit; }
+
+/* 图片和文档：字下面一排（和扩展一样高 56px，宽按图的比例，太窄太宽的裁一下）；字的第一行还是和方框齐 */
+.yaoji-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.yaoji-today button.yaoji-thumb {
+  height: auto;
+  padding: 0;
+  border: 1px solid var(--yaoji-line);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--yaoji-chip);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.yaoji-today button.yaoji-thumb:hover {
+  border-color: var(--yaoji-line-strong);
+}
+
+.yaoji-thumb img {
+  display: block;
+  width: auto;
+  height: 54px;
+  min-width: 30px;
+  max-width: 166px;
+  object-fit: cover;
+}
+
+.yaoji-today button.yaoji-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: auto;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--yaoji-chip);
+  color: var(--yaoji-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.yaoji-today button.yaoji-file:hover {
+  color: var(--yaoji-ink);
+}
+
+.yaoji-file > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yaoji-file-icon {
+  display: flex;
+}
+
+.yaoji-file-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 只有图没有字：方框和那排图的上沿齐 */
+.yaoji-today .yaoji-item.is-files-only .yaoji-text {
+  display: none;
+}
+
+.yaoji-today .yaoji-item.is-files-only input.yaoji-check {
+  margin-top: 0;
+}
 
 /* 长的折成两行，点了展开 */
 .yaoji-item:not(.is-open) .yaoji-text {
@@ -331,7 +407,7 @@
 .yaoji-item.is-long .yaoji-text { cursor: pointer; }
 
 /* 就地改字：输入框盖住原来那块字；标签都在框里了，下面那排小签先收起来（不说两遍） */
-.yaoji-item.is-editing :is(.yaoji-text, .yaoji-tags) {
+.yaoji-item.is-editing :is(.yaoji-text, .yaoji-tags, .yaoji-files) {
   display: none;
 }
 
@@ -352,7 +428,7 @@
   text-decoration-color: var(--yaoji-muted);
 }
 
-.yaoji-item.is-done :is(.yaoji-tags, .yaoji-issue) {
+.yaoji-item.is-done :is(.yaoji-tags, .yaoji-issue, .yaoji-files) {
   opacity: 0.6;
 }
 

@@ -89,3 +89,13 @@ test('Shift range starts from the last picked row, or the plainly clicked row â€
   assert.match(view, /const start = this\.picked\.size \? \(this\.lastPicked \|\| this\.lastClicked\) : this\.lastClicked;/);
   assert.match(view, /if \(event\.button === 0 && !\(event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey\)\) this\.lastClicked = key;/);
 });
+
+test('images sit in a row under the words (56px, like the extension); an image-only row lines its checkbox up with the row top', () => {
+  assert.match(view, /const attached = splitAttachments\(words\);\n {4}const counted = TodoCount\.parse\(attached\.words\);/);
+  assert.match(view, /row\.toggleClass\('is-files-only', !shown\.trim\(\)\);\n {6}this\.drawFiles\(body\.createDiv\(\{ cls: 'yaoji-files' \}\), attached\.items, sourcePath\);/);
+  assert.match(view, /this\.app\.vault\.getResourcePath\(file\)/);
+  assert.doesNotMatch(css, /\.yaoji-text img/);
+  assert.match(css, /\.yaoji-thumb img \{[^}]*height: 54px;/);
+  assert.match(css, /\.yaoji-today \.yaoji-item\.is-files-only \.yaoji-text \{\n {2}display: none;/);
+  assert.match(css, /\.yaoji-today \.yaoji-item\.is-files-only input\.yaoji-check \{\n {2}margin-top: 0;/);
+});
