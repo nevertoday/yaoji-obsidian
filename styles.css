@@ -140,9 +140,7 @@
   stroke-width: 2;
 }
 
-.yaoji-today button.yaoji-today-link:not(.clickable-icon),
-/* 「全部带来」：墨色 + 细下划线，一看就是能点的字；点了就地带过来 */
-.yaoji-today button.yaoji-left-link:not(.clickable-icon) {
+.yaoji-today button.yaoji-today-link:not(.clickable-icon) {
   padding: 0;
   height: auto;
   border: none;
@@ -157,14 +155,8 @@
   cursor: pointer;
 }
 
-.yaoji-today button.yaoji-today-link:not(.clickable-icon):hover,
-.yaoji-today button.yaoji-left-link:not(.clickable-icon):hover {
+.yaoji-today button.yaoji-today-link:not(.clickable-icon):hover {
   text-decoration-color: currentColor;
-}
-
-.yaoji-today button.yaoji-left-link:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 /* 翻前后一天：指到标头这一行才出来（手机上一直在） */
@@ -654,24 +646,79 @@
   font: inherit;
 }
 
-/* 底下一行「以前还有 N 件没做完　全部带来」 */
+/* 以前没做完的：一个格子（2026-11-14 方案 B，和浏览器扩展一样，照「提醒事项」首页的格子）。
+   图标在勾那条线（16），数字在待办文字那条线（44），按钮右边和行右边对齐；格子的底比字往外多 12px */
 .yaoji-left {
+  /* 格子的底比字往外多出的那一点：16（行的边）− 4（格子的边）；图标到数字也是它，数字才落在 44 */
+  --yaoji-left-inset: 12px;
   display: flex;
-  align-items: baseline;
-  gap: 16px;
-  padding: 16px;
+  align-items: center;
+  gap: var(--yaoji-left-inset);
+  min-height: 56px;
+  margin: 8px 4px 16px;
+  padding: 8px var(--yaoji-left-inset);
+  background: var(--yaoji-chip);
   font-size: 13px;
   color: var(--yaoji-muted);
+  white-space: nowrap;
 }
 
 .yaoji-left.is-hidden {
   display: none;
 }
 
-.yaoji-left b {
+.yaoji-left-icon {
+  display: flex;
+  flex: none;
+  width: 16px;
+  color: var(--yaoji-muted);
+}
+
+.yaoji-left-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.5;
+}
+
+.yaoji-left-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yaoji-left-count {
+  margin-inline-end: 8px;
+  font-size: 28px;
+  line-height: 32px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--yaoji-ink);
   font-variant-numeric: tabular-nums;
+}
+
+/* 「全部带来」：格子里唯一的黑底按钮，32px，方角 */
+.yaoji-today button.yaoji-left-bring:not(.clickable-icon) {
+  flex: none;
+  height: 32px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--yaoji-ink);
+  color: var(--background-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.yaoji-today button.yaoji-left-bring:not(.clickable-icon):hover {
+  opacity: 0.88;
+}
+
+.yaoji-today button.yaoji-left-bring:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* 配对：一句话 + 允许 / 不允许 */

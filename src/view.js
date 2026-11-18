@@ -1053,7 +1053,8 @@ export class TodayView extends ItemView {
     }
   }
 
-  // 「以前还有 1168 件没做完　全部带来」（2026-10-31 方案 A，和浏览器扩展一样）：只在看今天、而且以前还有没做完的时才有；
+  // 以前没做完的（规矩 2026-10-31 方案 A，样子 2026-11-14 方案 B，和浏览器扩展一样，照「提醒事项」首页的格子）：
+  // 收件箱图标 + 大号数字「1168 件以前没做完」+ 黑底「全部带来」。只在看今天、而且以前还有没做完的时才有；
   // 点「全部带来」以前所有没做完的都带到今天（能撤销），不分几天、没有菜单
   drawLeft() {
     const left = this.leftEl;
@@ -1062,13 +1063,14 @@ export class TodayView extends ItemView {
     const show = !this.date && note && note.dateKey === dateKey(this.plugin.now());
     left.toggleClass('is-hidden', !show);
     if (!show) return;
-    const [before, after = ''] = t('以前还有 {count} 件没做完', { count: '\u0000' }).split('\u0000');
+    setIcon(left.createSpan({ cls: 'yaoji-left-icon' }), 'inbox');
+    const [before, after = ''] = t('{count} 件以前没做完', { count: '\u0000' }).split('\u0000');
     // 字要包在一个 span 里，数字两边的空格才不会被吃掉
     const label = left.createSpan({ cls: 'yaoji-left-text' });
     label.append(before);
-    label.createEl('b', { text: String(note.total) });
+    label.createEl('b', { cls: 'yaoji-left-count', text: String(note.total) });
     label.append(after);
-    const bring = left.createEl('button', { cls: 'yaoji-left-link', text: t('全部带来') });
+    const bring = left.createEl('button', { cls: 'yaoji-left-bring', text: t('全部带来') });
     bring.addEventListener('click', async () => {
       bring.disabled = true;
       try { await this.plugin.carryNow(); } finally { bring.disabled = false; }
